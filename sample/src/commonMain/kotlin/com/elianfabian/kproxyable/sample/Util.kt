@@ -88,16 +88,67 @@ import com.elianfabian.kproxyable.*
 //	myInterface.isLoggingEnabled = true
 //}
 
-suspend fun main() {
-	println("=== KProxyable JVM Sample ===")
+val userServiceHandler = object : ProxyHandler {
+	override fun onCall(function: FunctionDescriptor, args: Array<Any?>): Any? {
+		println("▶ [onCall: ${function.returnType.classifier}] ${function.name}(${args.joinToString()})")
 
-	val userService = KProxy.create<UserService>(userServiceHandler)
+		if (function.name == "getUser" && function.returnType.classifier == User::class) {
+			val id = args[0] as String
+			return User(id, "User $id")
+		}
 
-	println("--- Testing UserService ---")
+		throw NotImplementedError("Return type ${function.returnType.classifier} is not handled in onCall")
+	}
 
-	val user = userService.getUser("123")
-	println("Retrieved user: $user")
+	override suspend fun onSuspendCall(function: FunctionDescriptor, args: Array<Any?>): Any? {
+		println("▶ [onSuspendCall: ${function.returnType.classifier}] ${function.name}(${args.joinToString()})")
 
-	val asyncUser = userService.getUserAsync("456")
-	println("Retrieved async user: $asyncUser")
+		if (function.name == "getUserAsync" && function.returnType.classifier == User::class) {
+			val id = args[0] as String
+			return User(id, "User $id")
+		}
+
+		return null
+	}
+
+	override fun onGetProperty(property: PropertyDescriptor): Any? {
+		throw NotImplementedError("Property access is not implemented in this handler")
+	}
+
+	override fun onSetProperty(property: PropertyDescriptor, value: Any?) {
+		throw NotImplementedError("Property access is not implemented in this handler")
+	}
+
+	override fun onEquals(other: Any?): Boolean {
+		return this === other
+	}
+
+	override fun onHashCode(): Int {
+		return 0
+	}
+
+	override fun onToString(): String {
+		return "UserServiceHandler"
+	}
 }
+
+
+@KProxyable
+interface MyInterface {
+
+	fun log(message: String, times: Int = 1)
+
+	suspend fun suspendLog(message: String)
+
+	val isLoggingSupported: Boolean
+
+	var isLoggingEnabled: Boolean
+}
+
+@KProxyable
+interface UserService {
+	fun getUser(id: String): User
+	suspend fun getUserAsync(id: String): User
+}
+
+data class User(val id: String, val name: String)

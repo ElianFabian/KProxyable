@@ -45,3 +45,4 @@ kotlin-ide/
 .claude/settings.local.json
 **/xcuserdata
 .test-federation.*
+kotlin-js-store/

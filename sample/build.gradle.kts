@@ -7,11 +7,13 @@ plugins {
 kotlin {
 	jvm()
 
-	js {
+	js(IR) {
+		binaries.executable()
 		browser()
 		nodejs()
 	}
 	wasmJs {
+		binaries.executable()
 		browser()
 		nodejs()
 	}
@@ -45,7 +47,8 @@ kotlin {
 
 dependencies {
 //	ksp(project(":proxy-processor"))
-	add("kspJvm", project(":kproxyable-processor"))
+	//add("kspJvm", project(":kproxyable-processor"))
+	add("kspCommonMainMetadata", project(":kproxyable-processor"))
 }
 
 
@@ -53,6 +56,3 @@ dependencies {
 tasks.matching { it.name == "kspKotlinJvm" }.configureEach {
 	outputs.upToDateWhen { false }
 }
-//tasks.withType<KotlinCompile>().configureEach {
-//	dependsOn(":kproxyable-compiler-plugin:publishToMavenLocal")
-//}
