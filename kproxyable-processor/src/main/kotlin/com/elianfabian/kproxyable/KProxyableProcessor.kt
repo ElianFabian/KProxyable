@@ -18,14 +18,29 @@ public class KProxyableProcessor(
 
 	override fun process(resolver: Resolver): List<KSAnnotated> {
 		val annotationName = KProxyable::class.qualifiedName ?: return emptyList()
-		val symbols = resolver.getSymbolsWithAnnotation(annotationName)
-		val (valid, invalid) = symbols.partition { it.validate() }
+
+		val directSymbols = resolver.getSymbolsWithAnnotation(annotationName)
+
+		val metaAnnotations = directSymbols
+			.filterIsInstance<KSClassDeclaration>()
+			.filter { it.classKind == ClassKind.ANNOTATION_CLASS }
+
+		val metaAnnotatedSymbols = metaAnnotations.flatMap { metaAnno ->
+			val qualifiedName = metaAnno.qualifiedName?.asString() ?: return@flatMap emptySequence()
+			resolver.getSymbolsWithAnnotation(qualifiedName)
+		}
+
+		val allTargetSymbols = (directSymbols + metaAnnotatedSymbols)
+			.filterNot { it in metaAnnotations }
+			.distinct()
+
+		val (valid, invalid) = allTargetSymbols.partition { it.validate() }
 
 		valid.filterIsInstance<KSClassDeclaration>().forEach { classDeclaration ->
 			if (classDeclaration.classKind != ClassKind.INTERFACE) {
 				environment.logger.error(
-					"@KProxyable can only be applied to interfaces",
-					classDeclaration
+					"@${KProxyable::class.qualifiedName} (or meta-annotation) can only be applied to interfaces",
+					classDeclaration,
 				)
 				return@forEach
 			}
@@ -41,7 +56,7 @@ public class KProxyableProcessor(
 
 	private fun generateProxyClass(
 		environment: SymbolProcessorEnvironment,
-		classDeclaration: KSClassDeclaration
+		classDeclaration: KSClassDeclaration,
 	) {
 		val packageName = classDeclaration.packageName.asString()
 		val interfaceName = classDeclaration.simpleName.asString()

@@ -7,7 +7,7 @@ public data class FunctionDescriptor(
 	val returnType: TypeDescriptor,
 	val receiverType: TypeDescriptor? = null,
 	val parameters: List<ParameterDescriptor> = emptyList(),
-	val annotations: List<Annotation> = emptyList()
+	val annotations: List<Annotation> = emptyList(),
 )
 
 public data class ParameterDescriptor(
@@ -23,7 +23,7 @@ public data class PropertyDescriptor(
 	val type: TypeDescriptor,
 	val isMutable: Boolean = false,
 	val receiverType: TypeDescriptor? = null,
-	val annotations: List<Annotation> = emptyList()
+	val annotations: List<Annotation> = emptyList(),
 )
 
 public data class TypeDescriptor(
