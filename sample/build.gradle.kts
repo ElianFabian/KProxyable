@@ -1,6 +1,7 @@
 plugins {
 	kotlin("multiplatform")
 	id("com.google.devtools.ksp")
+	id("com.elianfabian.kproxyable")
 }
 
 kotlin {
@@ -52,3 +53,6 @@ dependencies {
 tasks.matching { it.name == "kspKotlinJvm" }.configureEach {
 	outputs.upToDateWhen { false }
 }
+//tasks.withType<KotlinCompile>().configureEach {
+//	dependsOn(":kproxyable-compiler-plugin:publishToMavenLocal")
+//}

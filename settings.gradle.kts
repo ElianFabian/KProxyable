@@ -1,5 +1,7 @@
 pluginManagement {
+	includeBuild("kproxyable-gradle-plugin")
 	repositories {
+		mavenLocal()
 		google()
 		gradlePluginPortal()
 		mavenCentral()
@@ -8,6 +10,7 @@ pluginManagement {
 
 dependencyResolutionManagement {
 	repositories {
+		mavenLocal()
 		google()
 		mavenCentral()
 	}
@@ -17,4 +20,6 @@ rootProject.name = "KProxyable"
 
 include(":kproxyable-runtime")
 include(":kproxyable-processor")
+//include(":kproxyable-gradle-plugin")
+include(":kproxyable-compiler-plugin")
 include(":sample")
