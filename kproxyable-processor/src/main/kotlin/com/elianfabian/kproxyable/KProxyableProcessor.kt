@@ -126,10 +126,10 @@ public class KProxyableProcessor(
 
 					val isSuspend = Modifier.SUSPEND in function.modifiers
 					val statement = if (isSuspend) {
-						"return handler.onSuspendCall(%N, arrayOf(%L)) as %T"
+						"return handler.onSuspendCall(%N, listOf(%L)) as %T"
 					}
 					else {
-						"return handler.onCall(%N, arrayOf(%L)) as %T"
+						"return handler.onCall(%N, listOf(%L)) as %T"
 					}
 
 					val funSpec = FunSpec.builder(functionName)

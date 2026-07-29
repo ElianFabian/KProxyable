@@ -89,7 +89,7 @@ import com.elianfabian.kproxyable.*
 //}
 
 val userServiceHandler = object : ProxyHandler {
-	override fun onCall(function: FunctionDescriptor, args: Array<Any?>): Any? {
+	override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {
 		println("▶ [onCall: ${function.returnType.classifier}] ${function.name}(${args.joinToString()})")
 
 		if (function.name == "getUser" && function.returnType.classifier == User::class) {
@@ -100,7 +100,7 @@ val userServiceHandler = object : ProxyHandler {
 		throw NotImplementedError("Return type ${function.returnType.classifier} is not handled in onCall")
 	}
 
-	override suspend fun onSuspendCall(function: FunctionDescriptor, args: Array<Any?>): Any? {
+	override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
 		println("▶ [onSuspendCall: ${function.returnType.classifier}] ${function.name}(${args.joinToString()})")
 
 		if (function.name == "getUserAsync" && function.returnType.classifier == User::class) {
