@@ -17,6 +17,11 @@ kotlin {
 		browser()
 		nodejs()
 	}
+	// I wasn't able to be recognized by the IDE
+//	wasmWasi {
+//		binaries.executable()
+//		nodejs()
+//	}
 
 	iosX64()
 	iosArm64()
