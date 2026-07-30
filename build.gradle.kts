@@ -6,3 +6,10 @@ plugins {
 
 group = "com.elianfabian.kproxyable"
 version = "1.0-SNAPSHOT"
+
+allprojects {
+	repositories {
+		mavenCentral()
+		google()
+	}
+}
