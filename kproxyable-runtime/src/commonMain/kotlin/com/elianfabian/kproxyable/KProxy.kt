@@ -1,13 +1,24 @@
 package com.elianfabian.kproxyable
 
-public object KProxy {
+import kotlin.reflect.KClass
 
-	/**
-	 * Creates an implementation of the [T] interface.
-	 */
-	public inline fun <reified T : Any> create(
+public interface KProxyFactory {
+
+	public fun <T : Any> createProxy(
 		handler: ProxyHandler,
+		classifier: KClass<T>,
 	): T {
-		error("KProxyable Gradle plugin must be applied to your module to use KProxy.create().")
+		throw NotImplementedError(
+			"""
+				No proxy factory implementation found for '${classifier.simpleName ?: classifier}'.
+				Ensure KSP is configured and your expect object is annotated with @KProxyRegistry.
+			""".trimIndent()
+		)
 	}
+}
+
+public inline fun <reified T : Any> KProxyFactory.create(
+	handler: ProxyHandler,
+): T {
+	return createProxy(handler, T::class)
 }

@@ -87,6 +87,9 @@ import com.elianfabian.kproxyable.*
 //	// 4. Property setter
 //	myInterface.isLoggingEnabled = true
 //}
+@Suppress("KotlinNoActualForExpect")
+@KProxyRegistry
+expect object KProxy : KProxyFactory
 
 val userServiceHandler = object : ProxyHandler {
 	override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {

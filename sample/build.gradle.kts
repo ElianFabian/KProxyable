@@ -1,6 +1,5 @@
 plugins {
 	kotlin("multiplatform")
-	id("com.google.devtools.ksp")
 	id("com.elianfabian.kproxyable")
 }
 
@@ -17,47 +16,29 @@ kotlin {
 		browser()
 		nodejs()
 	}
-	// I wasn't able to be recognized by the IDE
-//	wasmWasi {
-//		binaries.executable()
-//		nodejs()
-//	}
 
-	iosX64()
-	iosArm64()
-	iosSimulatorArm64()
+	val nativeTargets = listOf(
+		iosX64(), iosArm64(), iosSimulatorArm64(),
+		macosX64(), macosArm64(),
+		tvosX64(), tvosArm64(), tvosSimulatorArm64(),
+		watchosX64(), watchosArm64(), watchosSimulatorArm64(), watchosDeviceArm64(),
+		linuxX64(), linuxArm64(), mingwX64()
+	)
 
-	macosX64()
-	macosArm64()
-
-	tvosX64()
-	tvosArm64()
-	tvosSimulatorArm64()
-
-	watchosX64()
-	watchosArm64()
-	watchosSimulatorArm64()
-	watchosDeviceArm64()
-
-	linuxX64()
-	linuxArm64()
-	mingwX64()
+	nativeTargets.forEach {
+		it.binaries.executable {
+			entryPoint = "com.elianfabian.kproxyable.sample.main"
+		}
+	}
 
 	sourceSets {
 		commonMain.dependencies {
-			implementation(project(":kproxyable-runtime"))
+			implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
 		}
 	}
 }
 
-dependencies {
-//	ksp(project(":proxy-processor"))
-	//add("kspJvm", project(":kproxyable-processor"))
-	add("kspCommonMainMetadata", project(":kproxyable-processor"))
-}
-
-
 // Only for development, to force KSP to run every time, even if nothing changed
-tasks.matching { it.name == "kspKotlinJvm" }.configureEach {
+tasks.matching { it.name.startsWith("kspKotlin") }.configureEach {
 	outputs.upToDateWhen { false }
 }

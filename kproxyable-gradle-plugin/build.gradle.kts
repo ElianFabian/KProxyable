@@ -1,25 +1,29 @@
 plugins {
-	`kotlin-dsl`
-	id("java-gradle-plugin")
+    `kotlin-dsl`
+    `java-gradle-plugin`
 }
 
 repositories {
-	mavenCentral()
-	google()
+    mavenCentral()
+    google()
+    gradlePluginPortal()
+}
+
+group = "com.elianfabian.kproxyable"
+version = "1.0-SNAPSHOT"
+
+gradlePlugin {
+    plugins {
+        create("kproxyable") {
+            id = "com.elianfabian.kproxyable"
+            implementationClass = "com.elianfabian.kproxyable.KProxyablePlugin"
+            displayName = "KProxyable Gradle Plugin"
+            description = "Automates KSP and runtime setup for KProxyable"
+        }
+    }
 }
 
 dependencies {
-	// Gradle Plugin de Kotlin directo, sin libs
-	implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
-}
-
-gradlePlugin {
-	plugins {
-		create("kproxyablePlugin") {
-			id = "com.elianfabian.kproxyable"
-			implementationClass = "com.elianfabian.kproxyable.KProxyableGradlePlugin"
-			displayName = "KProxyable Gradle Plugin"
-			description = "Compiler plugin and KSP setup for KProxyable"
-		}
-	}
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
+    implementation("com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.0.21-1.0.28")
 }

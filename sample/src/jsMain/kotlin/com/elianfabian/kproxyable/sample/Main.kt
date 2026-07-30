@@ -1,12 +1,8 @@
 package com.elianfabian.kproxyable.sample
 
-import com.elianfabian.kproxyable.FunctionDescriptor
-import com.elianfabian.kproxyable.KProxy
-import com.elianfabian.kproxyable.KProxyable
-import com.elianfabian.kproxyable.PropertyDescriptor
-import com.elianfabian.kproxyable.ProxyHandler
+import com.elianfabian.kproxyable.create
 
-// TODO: see how to execute this code on Kotlin/JS
+// Execute the task jsNodeRun
 suspend fun main() {
 	println("=== KProxyable JS Sample ===")
 

@@ -7,7 +7,6 @@ import com.google.devtools.ksp.processing.SymbolProcessorProvider
 public class KProxyableProcessorProvider : SymbolProcessorProvider {
 
 	override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
-		environment.logger.warn("KProxyableProcessorProvider: Creating KProxyableProcessor")
 		return KProxyableProcessor(environment)
 	}
 }

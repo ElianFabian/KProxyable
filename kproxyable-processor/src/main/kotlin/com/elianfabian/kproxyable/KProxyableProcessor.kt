@@ -8,18 +8,44 @@ import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import kotlin.reflect.KClass
 
 public class KProxyableProcessor(
 	private val environment: SymbolProcessorEnvironment,
 ) : SymbolProcessor {
 
-	override fun process(resolver: Resolver): List<KSAnnotated> {
-		val annotationName = KProxyable::class.qualifiedName ?: return emptyList()
+	private val accumulatedInterfaces = mutableListOf<KSClassDeclaration>()
+	private var registryDeclaration: KSClassDeclaration? = null
 
-		val directSymbols = resolver.getSymbolsWithAnnotation(annotationName)
+
+	override fun process(resolver: Resolver): List<KSAnnotated> {
+		val proxyableAnnotationName = KProxyable::class.qualifiedName ?: return emptyList()
+		val registryAnnotationName = KProxyRegistry::class.qualifiedName ?: return emptyList()
+
+		// 1. Process @KProxyRegistry annotation
+		val registrySymbols = resolver.getSymbolsWithAnnotation(registryAnnotationName)
+			.filterIsInstance<KSClassDeclaration>()
+			.toList()
+
+		if (registrySymbols.size > 1) {
+			environment.logger.error(
+				"Multiple @${KProxyRegistry::class.simpleName} declarations found. Only one registry object per module is allowed.",
+				registrySymbols.first(),
+			)
+		}
+		else if (registrySymbols.size == 1) {
+			val candidate = registrySymbols.first()
+			if (validateRegistryDeclaration(candidate)) {
+				registryDeclaration = candidate
+			}
+		}
+
+		// 2. Process @KProxyable interfaces
+		val directSymbols = resolver.getSymbolsWithAnnotation(proxyableAnnotationName)
 
 		val metaAnnotations = directSymbols
 			.filterIsInstance<KSClassDeclaration>()
@@ -49,9 +75,120 @@ public class KProxyableProcessor(
 				environment = environment,
 				classDeclaration = classDeclaration,
 			)
+
+			accumulatedInterfaces.add(classDeclaration)
 		}
 
 		return invalid
+	}
+
+	private fun validateRegistryDeclaration(declaration: KSClassDeclaration): Boolean {
+		var isValid = true
+
+		if (declaration.classKind != ClassKind.OBJECT) {
+			environment.logger.error(
+				"@${KProxyRegistry::class.simpleName} can only be applied to an 'object' declaration.",
+				declaration,
+			)
+			isValid = false
+		}
+
+		if (!declaration.isExpect) {
+			environment.logger.error(
+				"@${KProxyRegistry::class.simpleName} must be applied to an 'expect' object.",
+				declaration,
+			)
+			isValid = false
+		}
+
+		val expectedInterfaceQualifiedName = KProxyFactory::class.qualifiedName
+		val implementsInterface = declaration.superTypes.any { superTypeRef ->
+			val resolvedType = superTypeRef.resolve()
+			resolvedType.declaration.qualifiedName?.asString() == expectedInterfaceQualifiedName
+		}
+
+		if (!implementsInterface) {
+			environment.logger.error(
+				"The expect object annotated with @${KProxyRegistry::class.simpleName} must implement ${KProxyFactory::class.simpleName}.",
+				declaration,
+			)
+			isValid = false
+		}
+
+		return isValid
+	}
+
+	override fun finish() {
+		val registry = registryDeclaration ?: return
+
+		generateActualRegistry(registry, accumulatedInterfaces)
+	}
+
+	private fun generateActualRegistry(
+		registryDeclaration: KSClassDeclaration,
+		interfaces: List<KSClassDeclaration>,
+	) {
+		val packageName = registryDeclaration.packageName.asString()
+		val objectName = registryDeclaration.simpleName.asString()
+
+		val typeVariableT = TypeVariableName("T", ANY)
+		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
+		val proxyHandlerClassName = ProxyHandler::class.asTypeName()
+		val kProxyFactoryClassName = KProxyFactory::class.asTypeName()
+
+		val whenBlock = CodeBlock.builder()
+			.beginControlFlow("return when (classifier)")
+
+		interfaces.distinctBy { it.toClassName() }.forEach { interfaceDecl ->
+			val interfaceClassName = interfaceDecl.toClassName()
+			val interfacePackage = interfaceDecl.packageName.asString()
+			val proxyClassName = ClassName(interfacePackage, "_${interfaceDecl.simpleName.asString()}Proxy")
+
+			whenBlock.addStatement("%T::class -> %T(handler) as T", interfaceClassName, proxyClassName)
+		}
+
+		whenBlock.addStatement(
+			"else -> throw IllegalArgumentException(%S + (classifier as? %T)?.simpleName + %S)",
+			"Interface ",
+			KClass::class.asClassName().parameterizedBy(STAR),
+			" must be annotated with @KProxyable annotation."
+		)
+
+		whenBlock.endControlFlow()
+
+		val createFunSpec = FunSpec.builder("createProxy")
+			.addModifiers(KModifier.OVERRIDE)
+			.addTypeVariable(typeVariableT)
+			.addParameter("handler", proxyHandlerClassName)
+			.addParameter("classifier", classifierParamType)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.build()
+			)
+			.returns(typeVariableT)
+			.addCode(whenBlock.build())
+			.build()
+
+		val actualObjectSpec = TypeSpec.objectBuilder(objectName)
+			.addModifiers(KModifier.ACTUAL)
+			.addAnnotation(KProxyRegistry::class)
+			.addSuperinterface(kProxyFactoryClassName)
+			.addFunction(createFunSpec)
+			.build()
+
+		val fileSpec = FileSpec.builder(packageName, "${objectName}Actual")
+			.addType(actualObjectSpec)
+			.build()
+
+		val originatingFiles = (interfaces.mapNotNull { it.containingFile } + listOfNotNull(registryDeclaration.containingFile)).distinct()
+
+		fileSpec.writeTo(
+			codeGenerator = environment.codeGenerator,
+			aggregating = true,
+			originatingKSFiles = originatingFiles,
+		)
 	}
 
 	private fun generateProxyClass(
