@@ -9,8 +9,11 @@ repositories {
     gradlePluginPortal()
 }
 
-group = "com.elianfabian.kproxyable"
-version = "1.0-SNAPSHOT"
+group = property("group")!!
+version = property("version")!!
+
+val groupProp = group
+val versionProp = version
 
 gradlePlugin {
     plugins {
@@ -24,6 +27,33 @@ gradlePlugin {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
-    implementation("com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.0.21-1.0.28")
+    implementation(libs.kotlin.gradlePlugin)
+    implementation(libs.ksp.gradlePlugin)
+}
+
+// Generate a BuildConstants file to avoid hardcoding version and group in the plugin code
+val generateBuildConstants by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/sources/buildConstants/kotlin")
+    inputs.property("group", groupProp)
+    inputs.property("version", versionProp)
+    outputs.dir(outputDir)
+
+    doLast {
+        val outputFile = outputDir.get().file("com/elianfabian/kproxyable/BuildConstants.kt").asFile
+        outputFile.parentFile.mkdirs()
+        outputFile.writeText("""
+            package com.elianfabian.kproxyable
+
+            internal object BuildConstants {
+                const val GROUP = "$groupProp"
+                const val VERSION = "$versionProp"
+            }
+        """.trimIndent())
+    }
+}
+
+kotlin {
+    sourceSets.main {
+        kotlin.srcDir(generateBuildConstants)
+    }
 }

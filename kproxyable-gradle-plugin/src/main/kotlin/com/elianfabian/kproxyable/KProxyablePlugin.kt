@@ -20,15 +20,15 @@ class KProxyablePlugin : Plugin<Project> {
 
         // 3. Fallback for JVM-only projects
         project.plugins.withId("org.jetbrains.kotlin.jvm") {
-            project.dependencies.add("implementation", project.project(":kproxyable-runtime"))
-            project.dependencies.add("ksp", project.project(":kproxyable-processor"))
+            project.dependencies.add("implementation", project.kproxyDependency("runtime"))
+            project.dependencies.add("ksp", project.kproxyDependency("processor"))
         }
     }
 
     private fun configureKmp(project: Project, kotlin: KotlinMultiplatformExtension) {
         // Add runtime to commonMain
         kotlin.sourceSets.getByName("commonMain").dependencies {
-            implementation(project.project(":kproxyable-runtime"))
+            implementation(project.kproxyDependency("runtime"))
         }
 
         // Add processor to all KSP configurations
@@ -41,7 +41,16 @@ class KProxyablePlugin : Plugin<Project> {
                 "ksp${name.replaceFirstChar { it.uppercase() }}"
             }
             
-            project.dependencies.add(kspConfigName, project.project(":kproxyable-processor"))
+            project.dependencies.add(kspConfigName, project.kproxyDependency("processor"))
+        }
+    }
+
+    private fun Project.kproxyDependency(module: String): Any {
+        // Use local project if available (development mode), otherwise use published artifact
+        return try {
+            project.rootProject.project(":kproxyable-$module")
+        } catch (_: Exception) {
+            "${BuildConstants.GROUP}:kproxyable-$module:${BuildConstants.VERSION}"
         }
     }
 }

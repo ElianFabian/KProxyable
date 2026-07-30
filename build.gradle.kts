@@ -1,11 +1,11 @@
 plugins {
-	kotlin("jvm") version "2.0.21" apply false
-	kotlin("multiplatform") version "2.0.21" apply false
-	id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
+	alias(libs.plugins.kotlin.jvm) apply false
+	alias(libs.plugins.kotlin.multiplatform) apply false
+	alias(libs.plugins.ksp) apply false
 }
 
-group = "com.elianfabian.kproxyable"
-version = "1.0-SNAPSHOT"
+group = property("group")!!
+version = property("version")!!
 
 allprojects {
 	repositories {

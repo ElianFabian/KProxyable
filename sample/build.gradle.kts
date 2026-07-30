@@ -1,5 +1,5 @@
 plugins {
-	kotlin("multiplatform")
+	alias(libs.plugins.kotlin.multiplatform)
 	id("com.elianfabian.kproxyable")
 }
 
@@ -33,7 +33,7 @@ kotlin {
 
 	sourceSets {
 		commonMain.dependencies {
-			implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+			implementation(libs.kotlinx.coroutines.core)
 		}
 	}
 }

@@ -1,6 +1,6 @@
 plugins {
-	kotlin("jvm")
-	id("com.google.devtools.ksp")
+	alias(libs.plugins.kotlin.jvm)
+	alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -11,10 +11,10 @@ kotlin {
 dependencies {
 	implementation(project(":kproxyable-runtime"))
 
-	implementation("com.google.devtools.ksp:symbol-processing-api:2.0.21-1.0.28")
+	implementation(libs.ksp.api)
 
-	implementation("com.squareup:kotlinpoet:1.18.0")
-	implementation("com.squareup:kotlinpoet-ksp:1.18.0")
+	implementation(libs.kotlinpoet)
+	implementation(libs.kotlinpoet.ksp)
 
 	testImplementation(kotlin("test"))
 }
