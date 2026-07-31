@@ -11,17 +11,18 @@ class KProxyablePlugin : Plugin<Project> {
         project.plugins.apply("com.google.devtools.ksp")
 
         // 2. React to Kotlin Multiplatform extension
-        project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlin ->
-            configureKmp(project, kotlin)
-        } ?: project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
             val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
             configureKmp(project, kotlin)
         }
 
         // 3. Fallback for JVM-only projects
+        // We only apply this if it's NOT a multiplatform project to avoid conflicts
         project.plugins.withId("org.jetbrains.kotlin.jvm") {
-            project.dependencies.add("implementation", project.kproxyDependency("runtime"))
-            project.dependencies.add("ksp", project.kproxyDependency("processor"))
+            if (!project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform")) {
+                project.dependencies.add("implementation", project.kproxyDependency("jvm"))
+                project.dependencies.add("ksp", project.kproxyDependency("processor"))
+            }
         }
     }
 

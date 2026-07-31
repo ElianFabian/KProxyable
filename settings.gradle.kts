@@ -19,5 +19,7 @@ dependencyResolutionManagement {
 rootProject.name = "KProxyable"
 
 include(":kproxyable-runtime")
+include(":kproxyable-jvm")
 include(":kproxyable-processor")
-include(":sample")
+include(":sample-kmp")
+include(":sample-jvm")

@@ -119,9 +119,50 @@ public class KProxyableProcessor(
 	}
 
 	override fun finish() {
-		val registry = registryDeclaration ?: return
+		if (accumulatedInterfaces.isEmpty()) return
 
-		generateActualRegistry(registry, accumulatedInterfaces)
+		val registry = registryDeclaration
+		if (registry != null) {
+			generateActualRegistry(registry, accumulatedInterfaces)
+		} else {
+			generateReflectiveRegistry(accumulatedInterfaces)
+		}
+	}
+
+	private fun generateReflectiveRegistry(interfaces: List<KSClassDeclaration>) {
+		val packageName = "com.elianfabian.kproxyable.generated"
+		val objectName = "KProxyRegistryImpl"
+
+		val createFunSpec = generateCreateProxyFunction(interfaces)
+
+		val hiddenDeprecatedAnnotation = AnnotationSpec.builder(Deprecated::class)
+			.addMember("message = %S", "Internal proxy implementation. Use KProxy instead.")
+			.addMember("level = %T.%L", DeprecationLevel::class, DeprecationLevel.HIDDEN.name)
+			.build()
+
+		val objectSpec = TypeSpec.objectBuilder(objectName)
+			.addAnnotation(hiddenDeprecatedAnnotation)
+			.addSuperinterface(KProxyFactory::class.asTypeName())
+			.addFunction(createFunSpec)
+			.build()
+
+		val fileSpec = FileSpec.builder(packageName, objectName)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addType(objectSpec)
+			.build()
+
+		fileSpec.writeTo(
+			codeGenerator = environment.codeGenerator,
+			aggregating = true,
+			originatingKSFiles = interfaces.mapNotNull { it.containingFile }.distinct(),
+		)
 	}
 
 	private fun generateActualRegistry(
@@ -131,10 +172,42 @@ public class KProxyableProcessor(
 		val packageName = registryDeclaration.packageName.asString()
 		val objectName = registryDeclaration.simpleName.asString()
 
+		val createFunSpec = generateCreateProxyFunction(interfaces)
+
+		val actualObjectSpec = TypeSpec.objectBuilder(objectName)
+			.addModifiers(KModifier.ACTUAL)
+			.addAnnotation(KProxyRegistry::class)
+			.addSuperinterface(KProxyFactory::class.asTypeName())
+			.addFunction(createFunSpec)
+			.build()
+
+		val fileSpec = FileSpec.builder(packageName, "${objectName}Actual")
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addType(actualObjectSpec)
+			.build()
+
+		val originatingFiles = (interfaces.mapNotNull { it.containingFile } + listOfNotNull(registryDeclaration.containingFile)).distinct()
+
+		fileSpec.writeTo(
+			codeGenerator = environment.codeGenerator,
+			aggregating = true,
+			originatingKSFiles = originatingFiles,
+		)
+	}
+
+	private fun generateCreateProxyFunction(
+		interfaces: List<KSClassDeclaration>,
+	): FunSpec {
 		val typeVariableT = TypeVariableName("T", ANY)
 		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
 		val proxyHandlerClassName = ProxyHandler::class.asTypeName()
-		val kProxyFactoryClassName = KProxyFactory::class.asTypeName()
 
 		val whenBlock = CodeBlock.builder()
 			.beginControlFlow("return when (classifier)")
@@ -156,39 +229,14 @@ public class KProxyableProcessor(
 
 		whenBlock.endControlFlow()
 
-		val createFunSpec = FunSpec.builder("createProxy")
+		return FunSpec.builder("createProxy")
 			.addModifiers(KModifier.OVERRIDE)
 			.addTypeVariable(typeVariableT)
 			.addParameter("handler", proxyHandlerClassName)
 			.addParameter("classifier", classifierParamType)
-			.addAnnotation(
-				AnnotationSpec.builder(Suppress::class)
-					.addMember("%S", "DEPRECATION_ERROR")
-					.addMember("%S", "UNCHECKED_CAST")
-					.build()
-			)
 			.returns(typeVariableT)
 			.addCode(whenBlock.build())
 			.build()
-
-		val actualObjectSpec = TypeSpec.objectBuilder(objectName)
-			.addModifiers(KModifier.ACTUAL)
-			.addAnnotation(KProxyRegistry::class)
-			.addSuperinterface(kProxyFactoryClassName)
-			.addFunction(createFunSpec)
-			.build()
-
-		val fileSpec = FileSpec.builder(packageName, "${objectName}Actual")
-			.addType(actualObjectSpec)
-			.build()
-
-		val originatingFiles = (interfaces.mapNotNull { it.containingFile } + listOfNotNull(registryDeclaration.containingFile)).distinct()
-
-		fileSpec.writeTo(
-			codeGenerator = environment.codeGenerator,
-			aggregating = true,
-			originatingKSFiles = originatingFiles,
-		)
 	}
 
 	private fun generateProxyClass(
