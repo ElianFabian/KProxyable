@@ -2,6 +2,7 @@ package com.elianfabian.kproxyable
 
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.getDeclaredProperties
+import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
@@ -12,6 +13,8 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import java.io.File
+import java.util.zip.ZipFile
 import kotlin.reflect.KClass
 
 public class KProxyableProcessor(
@@ -119,31 +122,31 @@ public class KProxyableProcessor(
 	}
 
 	override fun finish() {
-		if (accumulatedInterfaces.isEmpty()) return
+		val moduleName = environment.options["kproxyable.moduleName"] ?: "unknown"
+		val isApp = environment.options["kproxyable.isApp"] == "true"
+
+		if (accumulatedInterfaces.isNotEmpty()) {
+			generateModuleRegistry(moduleName, accumulatedInterfaces)
+			generateBreadcrumb(moduleName)
+		}
 
 		val registry = registryDeclaration
 		if (registry != null) {
-			generateActualRegistry(registry, accumulatedInterfaces)
-		} else {
-			generateReflectiveRegistry(accumulatedInterfaces)
+			generateCompositeActualRegistry(registry, accumulatedInterfaces)
+		} else if (isApp) {
+			generateJvmImpl()
 		}
 	}
 
-	private fun generateReflectiveRegistry(interfaces: List<KSClassDeclaration>) {
+	private fun generateModuleRegistry(moduleName: String, interfaces: List<KSClassDeclaration>) {
 		val packageName = "com.elianfabian.kproxyable.generated"
-		val objectName = "KProxyRegistryImpl"
+		val objectName = "KProxyRegistry_$moduleName"
 
-		val createFunSpec = generateCreateProxyFunction(interfaces)
-
-		val hiddenDeprecatedAnnotation = AnnotationSpec.builder(Deprecated::class)
-			.addMember("message = %S", "Internal proxy implementation. Use KProxy instead.")
-			.addMember("level = %T.%L", DeprecationLevel::class, DeprecationLevel.HIDDEN.name)
-			.build()
+		val findFunSpec = generateFindProxyFunction(interfaces)
 
 		val objectSpec = TypeSpec.objectBuilder(objectName)
-			.addAnnotation(hiddenDeprecatedAnnotation)
 			.addSuperinterface(KProxyFactory::class.asTypeName())
-			.addFunction(createFunSpec)
+			.addFunction(findFunSpec)
 			.build()
 
 		val fileSpec = FileSpec.builder(packageName, objectName)
@@ -165,20 +168,193 @@ public class KProxyableProcessor(
 		)
 	}
 
-	private fun generateActualRegistry(
+	private fun generateJvmImpl() {
+		val packageName = "com.elianfabian.kproxyable.generated"
+		val objectName = "KProxyJvmImpl"
+		val moduleName = environment.options["kproxyable.moduleName"] ?: "unknown"
+
+		// Discover all module registries
+		val discoveredRegistryFqns = discoverRegistries().toMutableSet()
+
+		// Add current module's registry if it contains interfaces
+		if (accumulatedInterfaces.isNotEmpty()) {
+			discoveredRegistryFqns.add("com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName")
+		}
+
+		val typeVariableT = TypeVariableName("T", ANY)
+		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
+		val proxyHandlerClassName = ProxyHandler::class.asTypeName()
+
+		val codeBlock = CodeBlock.builder()
+
+		if (discoveredRegistryFqns.isEmpty()) {
+			codeBlock.addStatement("return null")
+		} else {
+			codeBlock.add("return ")
+			discoveredRegistryFqns.forEachIndexed { index, fqn ->
+				val discoveredRegistry = ClassName.bestGuess(fqn)
+				codeBlock.add("%T.findProxy(handler, classifier)", discoveredRegistry)
+				if (index < discoveredRegistryFqns.size - 1) {
+					codeBlock.add("\n ?: ")
+				}
+			}
+			codeBlock.add("\n")
+		}
+
+		val findFunSpec = FunSpec.builder("findProxy")
+			.addModifiers(KModifier.OVERRIDE)
+			.addTypeVariable(typeVariableT)
+			.addParameter("handler", proxyHandlerClassName)
+			.addParameter("classifier", classifierParamType)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.build()
+			)
+			.returns(typeVariableT.copy(nullable = true))
+			.addCode(codeBlock.build())
+			.build()
+
+		val objectSpec = TypeSpec.objectBuilder(objectName)
+			.addSuperinterface(KProxyFactory::class.asTypeName())
+			.addFunction(findFunSpec)
+			.build()
+
+		val fileSpec = FileSpec.builder(packageName, objectName)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addType(objectSpec)
+			.build()
+
+		fileSpec.writeTo(environment.codeGenerator, aggregating = true)
+	}
+
+	private fun generateBreadcrumb(moduleName: String) {
+		val fqn = "com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName"
+		environment.codeGenerator.createNewFile(
+			dependencies = Dependencies(true, *accumulatedInterfaces.mapNotNull { it.containingFile }.toTypedArray()),
+			packageName = "META-INF.services",
+			fileName = "com.elianfabian.kproxyable.KProxyFactory",
+			extensionName = ""
+		).use { output ->
+			output.write(fqn.toByteArray())
+		}
+	}
+
+	private fun discoverRegistries(): Set<String> {
+		val discoveredRegistryFqns = mutableSetOf<String>()
+
+		// 1. Try standard ClassLoader discovery
+		try {
+			val resources = this::class.java.classLoader.getResources("META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+			while (resources.hasMoreElements()) {
+				val url = resources.nextElement()
+				url.openStream().bufferedReader().useLines { lines ->
+					discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })
+				}
+			}
+		} catch (e: Exception) { }
+
+		// 2. Try explicit classpath argument from Gradle plugin
+		val explicitClasspath = environment.options["kproxyable.classpath"]
+		if (explicitClasspath != null) {
+			explicitClasspath.split(File.pathSeparator).forEach { path ->
+				val file = File(path)
+				if (file.exists()) {
+					if (file.isDirectory) {
+						val breadcrumb = File(file, "META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+						if (breadcrumb.exists()) {
+							breadcrumb.useLines { lines ->
+								discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })
+							}
+						}
+					} else if (file.extension == "jar" || file.extension == "klib") {
+						try {
+							ZipFile(file).use { zip ->
+								val entry = zip.getEntry("META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+								if (entry != null) {
+									zip.getInputStream(entry).bufferedReader().useLines { lines ->
+										discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })
+									}
+								}
+							}
+						} catch (e: Exception) { }
+					}
+				}
+			}
+		}
+		return discoveredRegistryFqns
+	}
+
+	private fun generateCompositeActualRegistry(
 		registryDeclaration: KSClassDeclaration,
-		interfaces: List<KSClassDeclaration>,
+		localInterfaces: List<KSClassDeclaration>,
 	) {
 		val packageName = registryDeclaration.packageName.asString()
 		val objectName = registryDeclaration.simpleName.asString()
 
-		val createFunSpec = generateCreateProxyFunction(interfaces)
+		// Discover other registries from dependencies
+		val discoveredRegistryFqns = discoverRegistries()
+
+		val typeVariableT = TypeVariableName("T", ANY)
+		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
+		val proxyHandlerClassName = ProxyHandler::class.asTypeName()
+
+		val codeBlock = CodeBlock.builder()
+
+		codeBlock.add("return ")
+
+		// 1. Try local interfaces
+		if (localInterfaces.isNotEmpty()) {
+			codeBlock.beginControlFlow("when (classifier)")
+			localInterfaces.distinctBy { it.toClassName() }.forEach { interfaceDecl ->
+				val interfaceClassName = interfaceDecl.toClassName()
+				val interfacePackage = interfaceDecl.packageName.asString()
+				val proxyClassName = ClassName(interfacePackage, "_${interfaceDecl.simpleName.asString()}Proxy")
+				codeBlock.addStatement("%T::class -> %T(handler) as T", interfaceClassName, proxyClassName)
+			}
+			codeBlock.addStatement("else -> null")
+			codeBlock.endControlFlow()
+			codeBlock.add(" ?: ")
+		}
+
+		// 2. Delegate to discovered registries
+		if (discoveredRegistryFqns.isNotEmpty()) {
+			discoveredRegistryFqns.forEachIndexed { index, fqn ->
+				val discoveredRegistry = ClassName.bestGuess(fqn)
+				codeBlock.add("%T.findProxy(handler, classifier)", discoveredRegistry)
+				if (index < discoveredRegistryFqns.size - 1) {
+					codeBlock.add("\n ?: ")
+				}
+			}
+		} else if (localInterfaces.isEmpty()) {
+			codeBlock.add("null")
+		}
+
+		codeBlock.add("\n")
+
+		val findFunSpec = FunSpec.builder("findProxy")
+			.addModifiers(KModifier.OVERRIDE)
+			.addTypeVariable(typeVariableT)
+			.addParameter("handler", proxyHandlerClassName)
+			.addParameter("classifier", classifierParamType)
+			.returns(typeVariableT.copy(nullable = true))
+			.addCode(codeBlock.build())
+			.build()
 
 		val actualObjectSpec = TypeSpec.objectBuilder(objectName)
 			.addModifiers(KModifier.ACTUAL)
 			.addAnnotation(KProxyRegistry::class)
 			.addSuperinterface(KProxyFactory::class.asTypeName())
-			.addFunction(createFunSpec)
+			.addFunction(findFunSpec)
 			.build()
 
 		val fileSpec = FileSpec.builder(packageName, "${objectName}Actual")
@@ -193,7 +369,7 @@ public class KProxyableProcessor(
 			.addType(actualObjectSpec)
 			.build()
 
-		val originatingFiles = (interfaces.mapNotNull { it.containingFile } + listOfNotNull(registryDeclaration.containingFile)).distinct()
+		val originatingFiles = (localInterfaces.mapNotNull { it.containingFile } + listOfNotNull(registryDeclaration.containingFile)).distinct()
 
 		fileSpec.writeTo(
 			codeGenerator = environment.codeGenerator,
@@ -202,7 +378,7 @@ public class KProxyableProcessor(
 		)
 	}
 
-	private fun generateCreateProxyFunction(
+	private fun generateFindProxyFunction(
 		interfaces: List<KSClassDeclaration>,
 	): FunSpec {
 		val typeVariableT = TypeVariableName("T", ANY)
@@ -220,21 +396,15 @@ public class KProxyableProcessor(
 			whenBlock.addStatement("%T::class -> %T(handler) as T", interfaceClassName, proxyClassName)
 		}
 
-		whenBlock.addStatement(
-			"else -> throw IllegalArgumentException(%S + (classifier as? %T)?.simpleName + %S)",
-			"Interface ",
-			KClass::class.asClassName().parameterizedBy(STAR),
-			" must be annotated with @KProxyable annotation."
-		)
-
+		whenBlock.addStatement("else -> null")
 		whenBlock.endControlFlow()
 
-		return FunSpec.builder("createProxy")
+		return FunSpec.builder("findProxy")
 			.addModifiers(KModifier.OVERRIDE)
 			.addTypeVariable(typeVariableT)
 			.addParameter("handler", proxyHandlerClassName)
 			.addParameter("classifier", classifierParamType)
-			.returns(typeVariableT)
+			.returns(typeVariableT.copy(nullable = true))
 			.addCode(whenBlock.build())
 			.build()
 	}

@@ -5,6 +5,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":sample-common"))
     implementation(libs.kotlinx.coroutines.core)
 }
 

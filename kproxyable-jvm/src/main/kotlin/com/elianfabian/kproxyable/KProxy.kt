@@ -5,12 +5,12 @@ import kotlin.reflect.KClass
 public object KProxy : KProxyFactory {
     private val delegate: KProxyFactory by lazy {
         try {
-            val clazz = Class.forName("com.elianfabian.kproxyable.generated.KProxyRegistryImpl")
+            val clazz = Class.forName("com.elianfabian.kproxyable.generated.KProxyJvmImpl")
             clazz.getField("INSTANCE").get(null) as KProxyFactory
         } catch (e: Exception) {
             throw IllegalStateException(
-                "KProxyable: Generated registry not found. " +
-                "Ensure you have annotated your interfaces with @KProxyable and KSP is configured.", e
+                "KProxyable: Master registry 'KProxyJvmImpl' not found. " +
+                "Ensure your main application module applies the KProxyable plugin and KSP is configured.", e
             )
         }
     }

@@ -16,7 +16,7 @@ package com.elianfabian.kproxyable
 	AnnotationTarget.CLASS,
 	AnnotationTarget.ANNOTATION_CLASS,
 )
-@Retention(AnnotationRetention.SOURCE)
+@Retention(AnnotationRetention.BINARY)
 public annotation class KProxyable(
 	val lazyDescriptors: LazyDescriptorsMode = LazyDescriptorsMode.AUTO
 )

@@ -24,6 +24,42 @@ class KProxyablePlugin : Plugin<Project> {
                 project.dependencies.add("ksp", project.kproxyDependency("processor"))
             }
         }
+
+        // 4. Common KSP configuration
+        val moduleName = project.path.split(":", "-")
+            .filter { it.isNotEmpty() }
+            .joinToString("_")
+            .ifEmpty { "root" }
+        
+        project.extensions.configure(com.google.devtools.ksp.gradle.KspExtension::class.java) {
+            arg("kproxyable.moduleName", moduleName)
+            
+            // Use a Provider for isApp to detect plugins applied later
+            val isAppProvider = project.provider {
+                (project.plugins.hasPlugin("com.android.application") || 
+                 project.plugins.hasPlugin("application") ||
+                 project.plugins.hasPlugin("org.gradle.application")).toString()
+            }
+            arg("kproxyable.isApp", isAppProvider)
+            
+            // We use a Provider to resolve the classpath lazily
+            // This avoids "Cannot change hierarchy" errors
+            val classpathProvider = project.provider {
+                val files = mutableSetOf<java.io.File>()
+                
+                // Only look at the most relevant configurations for discovery
+                val configNames = listOf("jvmCompileClasspath", "debugCompileClasspath", "compileClasspath")
+                configNames.forEach { name ->
+                    project.configurations.findByName(name)?.let { config ->
+                        try { files.addAll(config.files) } catch (e: Exception) { }
+                    }
+                }
+                
+                files.joinToString(java.io.File.pathSeparator) { it.absolutePath }
+            }
+            
+            arg("kproxyable.classpath", classpathProvider)
+        }
     }
 
     private fun configureKmp(project: Project, kotlin: KotlinMultiplatformExtension) {

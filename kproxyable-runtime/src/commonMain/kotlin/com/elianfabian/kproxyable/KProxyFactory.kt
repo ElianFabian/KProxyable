@@ -8,13 +8,16 @@ public interface KProxyFactory {
 		handler: ProxyHandler,
 		classifier: KClass<T>,
 	): T {
-		throw NotImplementedError(
-			"""
-				No proxy factory implementation found for '${classifier.simpleName ?: classifier}'.
-				Ensure KSP is configured and your expect object is annotated with @KProxyRegistry.
-			""".trimIndent()
+		return findProxy(handler, classifier) ?: throw IllegalArgumentException(
+			"No proxy factory implementation found for '${classifier.simpleName ?: classifier}'. " +
+			"Ensure the interface is annotated with @KProxyable and KSP is configured."
 		)
 	}
+
+	public fun <T : Any> findProxy(
+		handler: ProxyHandler,
+		classifier: KClass<T>,
+	): T? = null
 }
 
 public inline fun <reified T : Any> KProxyFactory.create(

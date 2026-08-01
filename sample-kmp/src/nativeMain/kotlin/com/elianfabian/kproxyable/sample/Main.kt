@@ -4,15 +4,30 @@ import com.elianfabian.kproxyable.create
 import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
-    println("=== KProxyable Native Sample ===")
+    println("=== KProxyable KMP Sample (Native) ===")
 
-    val userService = KProxy.create<UserService>(userServiceHandler)
+    println("\n--- Testing Common Service (Cross-Module) ---")
+    val service = KProxy.create<ComprehensiveService>(DemoHandler())
+    val result = service.performAction(1, "Data")
+    println("Result of performAction: $result")
 
-    println("--- Testing UserService ---")
+    println("\n--- Testing Local Service (Current Module) ---")
+    val localService = KProxy.create<KmpLocalService>(DemoHandler())
+    val localResult = localService.kmpSpecificAction("KMP Input")
+    println("Local Result: $localResult")
 
-    val user = userService.getUser("Native-123")
-    println("Retrieved user: $user")
+    println("\n--- Testing Suspend ---")
+    val data = service.fetchDataAsync("KMP Query")
+    println("Async data: $data")
 
-    val asyncUser = userService.getUserAsync("Native-456")
-    println("Retrieved async user: $asyncUser")
+    println("--- Testing Properties ---")
+    println("Version: ${service.version}")
+    println("Is Active (initial): ${service.isActive}")
+    service.isActive = true
+    println("Is Active (updated): ${service.isActive}")
+
+    println("--- Testing Any Methods ---")
+    println("ToString: $service")
+    println("HashCode: ${service.hashCode()}")
+    println("Equals self: ${service == service}")
 }
