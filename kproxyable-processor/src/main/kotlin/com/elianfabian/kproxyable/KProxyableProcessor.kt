@@ -134,9 +134,133 @@ public class KProxyableProcessor(
 		if (registry != null) {
 			generateCompositeActualRegistry(registry, accumulatedInterfaces)
 		} else if (isApp) {
-			generateJvmImpl()
+			val platforms = environment.platforms.map { it.platformName.lowercase() }
+			// DEBUG: generate a file with platform names
+			/*
+			environment.codeGenerator.createNewFile(Dependencies.ALL, "", "platforms", "txt").use { 
+				it.write(platforms.joinToString(",").toByteArray()) 
+			}
+			*/
+			if (platforms.any { it.contains("js") }) {
+				generateJsImpl()
+			} else {
+				generateJvmImpl()
+			}
 		}
 	}
+
+	private fun generateJsImpl() {
+		val packageName = "com.elianfabian.kproxyable.generated"
+		val objectName = "KProxyJsImpl"
+		val moduleName = environment.options["kproxyable.moduleName"] ?: "unknown"
+
+		// Discover all module registries
+		val discoveredRegistryFqns = discoverRegistries().toMutableSet()
+
+		// Add current module's registry if it contains interfaces
+		if (accumulatedInterfaces.isNotEmpty()) {
+			discoveredRegistryFqns.add("com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName")
+		}
+
+		val typeVariableT = TypeVariableName("T", ANY)
+		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
+		val proxyHandlerClassName = ProxyHandler::class.asTypeName()
+
+		val codeBlock = CodeBlock.builder()
+
+		if (discoveredRegistryFqns.isEmpty()) {
+			codeBlock.addStatement("return null")
+		} else {
+			codeBlock.add("return ")
+			discoveredRegistryFqns.forEachIndexed { index, fqn ->
+				val discoveredRegistry = ClassName.bestGuess(fqn)
+				codeBlock.add("%T.findProxy(handler, classifier)", discoveredRegistry)
+				if (index < discoveredRegistryFqns.size - 1) {
+					codeBlock.add("\n ?: ")
+				}
+			}
+			codeBlock.add("\n")
+		}
+
+		val findFunSpec = FunSpec.builder("findProxy")
+			.addModifiers(KModifier.OVERRIDE)
+			.addTypeVariable(typeVariableT)
+			.addParameter("handler", proxyHandlerClassName)
+			.addParameter("classifier", classifierParamType)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.build()
+			)
+			.returns(typeVariableT.copy(nullable = true))
+			.addCode(codeBlock.build())
+			.build()
+
+		val jsExport = ClassName("kotlin.js", "JsExport")
+		val jsName = ClassName("kotlin.js", "JsName")
+
+		val objectSpec = TypeSpec.objectBuilder(objectName)
+			.addAnnotation(jsExport)
+			.addAnnotation(AnnotationSpec.builder(jsName).addMember("%S", objectName).build())
+			.addSuperinterface(KProxyFactory::class.asTypeName())
+			.addFunction(findFunSpec)
+			.build()
+
+		val fileSpec = FileSpec.builder(packageName, objectName)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.addMember("%S", "NON_EXPORTABLE_TYPE")
+					.addMember("%S", "OPT_IN_USAGE")
+					.addMember("%S", "OPT_IN_USAGE_ERROR")
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addAnnotation(
+				AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+					.addMember("%T::class", ClassName("kotlin.js", "ExperimentalJsExport"))
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addType(objectSpec)
+			.build()
+
+		val discoveryFileSpec = FileSpec.builder("", "${objectName}_Discovery")
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.addMember("%S", "NON_EXPORTABLE_TYPE")
+					.addMember("%S", "OPT_IN_USAGE")
+					.addMember("%S", "OPT_IN_USAGE_ERROR")
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addAnnotation(
+				AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+					.addMember("%T::class", ClassName("kotlin.js", "ExperimentalJsExport"))
+					.useSiteTarget(AnnotationSpec.UseSiteTarget.FILE)
+					.build()
+			)
+			.addFunction(
+				FunSpec.builder("getKProxyJsImpl")
+					.addAnnotation(jsExport)
+					.addAnnotation(AnnotationSpec.builder(jsName).addMember("%S", "getKProxyJsImpl").build())
+					.returns(KProxyFactory::class.asTypeName())
+					.addStatement("return %T", ClassName(packageName, objectName))
+					.build()
+			)
+			.build()
+
+		fileSpec.writeTo(environment.codeGenerator, aggregating = true)
+		discoveryFileSpec.writeTo(environment.codeGenerator, aggregating = true)
+	}
+
 
 	private fun generateModuleRegistry(moduleName: String, interfaces: List<KSClassDeclaration>) {
 		val packageName = "com.elianfabian.kproxyable.generated"
@@ -251,12 +375,15 @@ public class KProxyableProcessor(
 
 	private fun discoverRegistries(): Set<String> {
 		val discoveredRegistryFqns = mutableSetOf<String>()
+		val path = "META-INF/services/com.elianfabian.kproxyable.KProxyFactory"
+		val klibPath = "default/resources/$path"
 
 		// 1. Try standard ClassLoader discovery
 		try {
-			val resources = this::class.java.classLoader.getResources("META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+			val resources = this::class.java.classLoader.getResources(path)
 			while (resources.hasMoreElements()) {
 				val url = resources.nextElement()
+				environment.logger.warn("Discovered breadcrumb via ClassLoader: $url")
 				url.openStream().bufferedReader().useLines { lines ->
 					discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })
 				}
@@ -266,11 +393,12 @@ public class KProxyableProcessor(
 		// 2. Try explicit classpath argument from Gradle plugin
 		val explicitClasspath = environment.options["kproxyable.classpath"]
 		if (explicitClasspath != null) {
-			explicitClasspath.split(File.pathSeparator).forEach { path ->
-				val file = File(path)
+			explicitClasspath.split(File.pathSeparator).forEach { item ->
+				if (item.isBlank()) return@forEach
+				val file = File(item)
 				if (file.exists()) {
 					if (file.isDirectory) {
-						val breadcrumb = File(file, "META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+						val breadcrumb = File(file, path)
 						if (breadcrumb.exists()) {
 							breadcrumb.useLines { lines ->
 								discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })
@@ -279,7 +407,7 @@ public class KProxyableProcessor(
 					} else if (file.extension == "jar" || file.extension == "klib") {
 						try {
 							ZipFile(file).use { zip ->
-								val entry = zip.getEntry("META-INF/services/com.elianfabian.kproxyable.KProxyFactory")
+								val entry = zip.getEntry(path) ?: zip.getEntry(klibPath)
 								if (entry != null) {
 									zip.getInputStream(entry).bufferedReader().useLines { lines ->
 										discoveredRegistryFqns.addAll(lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") })

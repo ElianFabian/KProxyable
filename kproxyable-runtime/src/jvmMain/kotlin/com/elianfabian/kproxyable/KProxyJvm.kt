@@ -2,7 +2,10 @@ package com.elianfabian.kproxyable
 
 import kotlin.reflect.KClass
 
-public object KProxy : KProxyFactory {
+/**
+ * Entry point for creating proxies in JVM-only projects using automagic discovery.
+ */
+public object KProxyJvm : KProxyFactory {
     private val delegate: KProxyFactory by lazy {
         try {
             val clazz = Class.forName("com.elianfabian.kproxyable.generated.KProxyJvmImpl")
@@ -15,7 +18,7 @@ public object KProxy : KProxyFactory {
         }
     }
 
-    override fun <T : Any> createProxy(handler: ProxyHandler, classifier: KClass<T>): T {
-        return delegate.createProxy(handler, classifier)
+    override fun <T : Any> findProxy(handler: ProxyHandler, classifier: KClass<T>): T? {
+        return delegate.findProxy(handler, classifier)
     }
 }

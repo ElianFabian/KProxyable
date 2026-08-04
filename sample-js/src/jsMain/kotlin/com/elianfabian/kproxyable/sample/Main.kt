@@ -1,23 +1,23 @@
 package com.elianfabian.kproxyable.sample
 
-import com.elianfabian.kproxyable.KProxyJvm
+import com.elianfabian.kproxyable.KProxyJs
 import com.elianfabian.kproxyable.create
 
 suspend fun main() {
-    println("=== KProxyable JVM-only Sample ===")
-    
+    println("=== KProxyable JS-only Sample ===")
+
     println("\n--- Testing Common Service (Cross-Module) ---")
-    val service = KProxyJvm.create<ComprehensiveService>(DemoHandler())
-    val result = service.performAction(42, "JVM Data")
+    val service = KProxyJs.create<ComprehensiveService>(DemoHandler())
+    val result = service.performAction(42, "JS Data")
     println("Result: $result")
 
     println("\n--- Testing Local Service (Current Module) ---")
-    val localService = KProxyJvm.create<JvmLocalService>(DemoHandler())
-    val localResult = localService.jvmSpecificAction(100)
+    val localService = KProxyJs.create<JsLocalService>(DemoHandler())
+    val localResult = localService.greet("Hello, JS")
     println("Local Result: $localResult")
 
     println("\n--- Testing Suspend ---")
-    val data = service.fetchDataAsync("JVM Query")
+    val data = service.fetchDataAsync("JS Query")
     println("Async data: $data")
 
     println("--- Testing Properties ---")
