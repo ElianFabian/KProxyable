@@ -7,17 +7,17 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 class KProxyablePlugin : Plugin<Project> {
     override fun apply(project: Project) {
-        // 1. Apply KSP plugin immediately
+        // 1. Apply KSP plugin immediately to enable code generation
         project.plugins.apply("com.google.devtools.ksp")
 
-        // 2. React to Kotlin Multiplatform extension
+        // 2. React to Kotlin Multiplatform extension if present
         project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
             val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
             configureKmp(project, kotlin)
         }
 
         // 3. Fallback for JVM-only projects
-        // We only apply this if it's NOT a multiplatform project to avoid conflicts
+        // We only apply this if it's NOT a multiplatform project to avoid dependency conflicts
         project.plugins.withId("org.jetbrains.kotlin.jvm") {
             if (!project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform")) {
                 project.dependencies.add("implementation", project.kproxyDependency("runtime"))
@@ -26,6 +26,7 @@ class KProxyablePlugin : Plugin<Project> {
         }
 
         // 4. Support for JS-only projects
+        // Manages the specific KSP configuration naming for the JS target
         project.plugins.withId("org.jetbrains.kotlin.js") {
             if (!project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform")) {
                 project.dependencies.add("implementation", project.kproxyDependency("runtime"))
@@ -41,6 +42,7 @@ class KProxyablePlugin : Plugin<Project> {
         }
 
         // 5. Common KSP configuration
+        // Sanitizes the project path to create a unique identifier for module registries
         val moduleName = project.path.split(":", "-")
             .filter { it.isNotEmpty() }
             .joinToString("_")
@@ -49,13 +51,15 @@ class KProxyablePlugin : Plugin<Project> {
         project.extensions.configure(com.google.devtools.ksp.gradle.KspExtension::class.java) {
             arg("kproxyable.moduleName", moduleName)
             
-            // Use a Provider for isApp to detect plugins applied later
+            // AUTOMATIC APPLICATION DETECTION
+            // Uses a Provider to detect if this is an application module at the end of configuration.
+            // This is used by the processor to determine whether to generate the Master Registry.
             val isAppProvider = project.provider {
                 val hasAppPlugin = project.plugins.hasPlugin("com.android.application") || 
                                    project.plugins.hasPlugin("application") ||
                                    project.plugins.hasPlugin("org.gradle.application")
                 
-                // Try to detect Kotlin/JS executable
+                // Detection for Kotlin/JS or KMP executables via reflection on Kotlin internals
                 val isJsExecutable = try {
                     val kotlin = project.extensions.findByName("kotlin")
                     val targets = kotlin?.javaClass?.methods?.find { it.name == "getTargets" }?.invoke(kotlin) as? Iterable<*>
@@ -78,12 +82,13 @@ class KProxyablePlugin : Plugin<Project> {
             }
             arg("kproxyable.isApp", isAppProvider)
             
-            // We use a Provider to resolve the classpath lazily
-            // This avoids "Cannot change hierarchy" errors
+            // LAZY CLASSPATH RESOLUTION
+            // Resolves the full compile classpath only during the execution phase.
+            // This is required for cross-module "breadcrumb" discovery while avoiding
+            // Gradle's "Configuration already resolved" errors during project sync.
             val classpathProvider = project.provider {
                 val files = mutableSetOf<java.io.File>()
                 
-                // Only look at the most relevant configurations for discovery
                 val configNames = listOf(
                     "jvmCompileClasspath", 
                     "debugCompileClasspath", 
@@ -109,12 +114,13 @@ class KProxyablePlugin : Plugin<Project> {
     }
 
     private fun configureKmp(project: Project, kotlin: KotlinMultiplatformExtension) {
-        // Add runtime to commonMain
+        // Add runtime to commonMain so proxies can be used across all targets
         kotlin.sourceSets.getByName("commonMain").dependencies {
             implementation(project.kproxyDependency("runtime"))
         }
 
-        // Add processor to all KSP configurations and fix resource inclusion for JS
+        // Add processor to all KSP configurations and fix resource inclusion for JS/Wasm
+        // Klibs require explicit resource folder registration for KSP-generated files.
         kotlin.targets.configureEach {
             if (platformType == KotlinPlatformType.common) return@configureEach
             
@@ -135,9 +141,11 @@ class KProxyablePlugin : Plugin<Project> {
                     val kspResourceDir = project.layout.buildDirectory.dir("generated/ksp/$targetName/$targetName${compilationName.replaceFirstChar { it.uppercase() }}/resources")
                     defaultSourceSet.resources.srcDir(kspResourceDir)
                     
+                    // Ensure generation happens before resource processing
                     project.tasks.matching { it.name.contains(targetName, ignoreCase = true) && it.name.contains("ProcessResources", ignoreCase = true) }.configureEach {
                         if (project.tasks.findByName(kspTaskName) != null) dependsOn(kspTaskName)
                     }
+                    // Ensure generation happens before compilation
                     project.tasks.matching { it.name == "compileKotlin${targetName.replaceFirstChar { it.uppercase() }}" }.configureEach {
                         if (project.tasks.findByName(kspTaskName) != null) dependsOn(kspTaskName)
                     }
