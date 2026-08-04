@@ -4,7 +4,16 @@ plugins {
 }
 
 kotlin {
-	jvm()
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
+	jvm {
+		withJava()
+		mainRun {
+			mainClass.set("com.elianfabian.kproxyable.sample.MainKt")
+		}
+	}
 
 	js(IR) {
 		binaries.executable()
