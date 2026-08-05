@@ -41,3 +41,10 @@ kotlin {
 	linuxArm64()
 	mingwX64()
 }
+
+// Package ProGuard rules for JVM consumers
+tasks.named<Jar>("jvmJar") {
+    from("kproxyable.pro") {
+        into("META-INF/proguard")
+    }
+}
