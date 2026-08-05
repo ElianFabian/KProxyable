@@ -436,9 +436,15 @@ public class KProxyableProcessor(
 	) {
 		val packageName = registryDeclaration.packageName.asString()
 		val objectName = registryDeclaration.simpleName.asString()
+		val moduleName = environment.options["kproxyable.moduleName"] ?: "unknown"
 
 		// Discover other registries from dependencies
-		val discoveredRegistryFqns = discoverRegistries()
+		val discoveredRegistryFqns = discoverRegistries().toMutableSet()
+		
+		// Add the local module registry if it contains interfaces
+		if (localInterfaces.isNotEmpty()) {
+			discoveredRegistryFqns.add("com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName")
+		}
 
 		val typeVariableT = TypeVariableName("T", ANY)
 		val classifierParamType = KClass::class.asClassName().parameterizedBy(typeVariableT)
@@ -446,42 +452,32 @@ public class KProxyableProcessor(
 
 		val codeBlock = CodeBlock.builder()
 
-		codeBlock.add("return ")
-
-		// 1. Try local interfaces
-		if (localInterfaces.isNotEmpty()) {
-			codeBlock.beginControlFlow("when (classifier)")
-			localInterfaces.distinctBy { it.toClassName() }.forEach { interfaceDecl ->
-				val interfaceClassName = interfaceDecl.toClassName()
-				val interfacePackage = interfaceDecl.packageName.asString()
-				val proxyClassName = ClassName(interfacePackage, "_${interfaceDecl.simpleName.asString()}Proxy")
-				codeBlock.addStatement("%T::class -> %T(handler) as T", interfaceClassName, proxyClassName)
-			}
-			codeBlock.addStatement("else -> null")
-			codeBlock.endControlFlow()
-			codeBlock.add(" ?: ")
-		}
-
-		// 2. Delegate to discovered registries
-		if (discoveredRegistryFqns.isNotEmpty()) {
-			discoveredRegistryFqns.forEachIndexed { index, fqn ->
+		if (discoveredRegistryFqns.isEmpty()) {
+			codeBlock.addStatement("return null")
+		} else {
+			codeBlock.add("return ")
+			discoveredRegistryFqns.toList().forEachIndexed { index, fqn ->
 				val discoveredRegistry = ClassName.bestGuess(fqn)
 				codeBlock.add("%T.findProxy(handler, classifier)", discoveredRegistry)
 				if (index < discoveredRegistryFqns.size - 1) {
 					codeBlock.add("\n ?: ")
 				}
 			}
-		} else if (localInterfaces.isEmpty()) {
-			codeBlock.add("null")
+			codeBlock.add("\n")
 		}
-
-		codeBlock.add("\n")
 
 		val findFunSpec = FunSpec.builder("findProxy")
 			.addModifiers(KModifier.OVERRIDE)
 			.addTypeVariable(typeVariableT)
 			.addParameter("handler", proxyHandlerClassName)
 			.addParameter("classifier", classifierParamType)
+			.addAnnotation(
+				AnnotationSpec.builder(Suppress::class)
+					.addMember("%S", "DEPRECATION")
+					.addMember("%S", "DEPRECATION_ERROR")
+					.addMember("%S", "UNCHECKED_CAST")
+					.build()
+			)
 			.returns(typeVariableT.copy(nullable = true))
 			.addCode(codeBlock.build())
 			.build()
