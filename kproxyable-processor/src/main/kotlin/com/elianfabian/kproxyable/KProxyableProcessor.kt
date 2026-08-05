@@ -565,16 +565,30 @@ public class KProxyableProcessor(
 			.addModifiers(KModifier.PRIVATE)
 			.build()
 
-		val companionObjectSpec = TypeSpec.companionObjectBuilder()
-			.apply {
-				classDeclaration.getDeclaredFunctions().forEach { function ->
-					addProperty(generateFunctionDescriptorStaticProperty(function))
-				}
-				classDeclaration.getDeclaredProperties().forEach { property ->
-					addProperty(generatePropertyDescriptorStaticProperty(property))
-				}
-			}
-			.build()
+		val companionObjectBuilder = TypeSpec.companionObjectBuilder()
+
+		// Always use lazy mode with nullable vars for best performance and reduced class-loading cost.
+		// Backing fields are stored in the companion object as private nullable vars.
+		classDeclaration.getDeclaredFunctions().forEach { function ->
+			val name = "_${function.simpleName.asString()}Descriptor"
+			companionObjectBuilder.addProperty(
+				PropertySpec.builder(name, FunctionDescriptor::class.asTypeName().copy(nullable = true))
+					.mutable(true)
+					.initializer("null")
+					.addModifiers(KModifier.PRIVATE)
+					.build()
+			)
+		}
+		classDeclaration.getDeclaredProperties().forEach { property ->
+			val name = "_${property.simpleName.asString()}Descriptor"
+			companionObjectBuilder.addProperty(
+				PropertySpec.builder(name, PropertyDescriptor::class.asTypeName().copy(nullable = true))
+					.mutable(true)
+					.initializer("null")
+					.addModifiers(KModifier.PRIVATE)
+					.build()
+			)
+		}
 
 		val hiddenDeprecatedAnnotation = AnnotationSpec.builder(Deprecated::class)
 			.addMember("message = %S", "Internal proxy implementation. Use factory function instead.")
@@ -585,16 +599,22 @@ public class KProxyableProcessor(
 			.addSuperinterface(interfaceClassName)
 			.primaryConstructor(primaryConstructor)
 			.addProperty(handlerProperty)
-			.addType(companionObjectSpec)
+			.addType(companionObjectBuilder.build())
 			.addAnnotation(hiddenDeprecatedAnnotation)
 			.apply {
 				classDeclaration.getDeclaredProperties().forEach { property ->
 					val propertyName = property.simpleName.asString()
-					val descriptorPropertyName = "${propertyName}Descriptor"
 					val propertyType = property.type.toTypeName()
+					
+					val backField = "_${propertyName}Descriptor"
+					val initCode = generatePropertyDescriptorInitializer(property)
+					// The "Check and Init" pattern requested for high performance
+					val descriptorCode = CodeBlock.of("val descriptor = %N ?: %L.also { %N = it }", backField, initCode, backField)
 
 					val getterSpec = FunSpec.getterBuilder()
-						.addStatement("return handler.onGetProperty(%N) as %T", descriptorPropertyName, propertyType)
+						.addCode(descriptorCode)
+						.addCode("\n")
+						.addStatement("return handler.onGetProperty(descriptor) as %T", propertyType)
 						.build()
 
 					val propBuilder = PropertySpec.builder(propertyName, propertyType)
@@ -604,7 +624,9 @@ public class KProxyableProcessor(
 					if (property.isMutable) {
 						val setterSpec = FunSpec.setterBuilder()
 							.addParameter("v", propertyType)
-							.addStatement("handler.onSetProperty(%N, v)", descriptorPropertyName)
+							.addCode(descriptorCode)
+							.addCode("\n")
+							.addStatement("handler.onSetProperty(descriptor, v)")
 							.build()
 
 						propBuilder
@@ -617,8 +639,12 @@ public class KProxyableProcessor(
 
 				classDeclaration.getDeclaredFunctions().forEach { function ->
 					val functionName = function.simpleName.asString()
-					val descriptorPropertyName = "${functionName}Descriptor"
 					val returnType = function.returnType?.toTypeName() ?: UNIT
+
+					val backField = "_${functionName}Descriptor"
+					val initCode = generateFunctionDescriptorInitializer(function)
+					// The "Check and Init" pattern requested for high performance
+					val descriptorCode = CodeBlock.of("val descriptor = %N ?: %L.also { %N = it }", backField, initCode, backField)
 
 					val parameters = function.parameters.mapNotNull { param ->
 						val paramName = param.name?.asString() ?: return@mapNotNull null
@@ -632,10 +658,10 @@ public class KProxyableProcessor(
 
 					val isSuspend = Modifier.SUSPEND in function.modifiers
 					val statement = if (isSuspend) {
-						"return handler.onSuspendCall(%N, listOf(%L)) as %T"
+						"return handler.onSuspendCall(descriptor, listOf(%L)) as %T"
 					}
 					else {
-						"return handler.onCall(%N, listOf(%L)) as %T"
+						"return handler.onCall(descriptor, listOf(%L)) as %T"
 					}
 
 					val funSpec = FunSpec.builder(functionName)
@@ -644,7 +670,9 @@ public class KProxyableProcessor(
 						)
 						.returns(returnType)
 						.addParameters(parameters)
-						.addStatement(statement, descriptorPropertyName, argsCall, returnType)
+						.addCode(descriptorCode)
+						.addCode("\n")
+						.addStatement(statement, argsCall, returnType)
 						.build()
 
 					addFunction(funSpec)
@@ -684,6 +712,80 @@ public class KProxyableProcessor(
 			aggregating = false,
 			originatingKSFiles = listOfNotNull(classDeclaration.containingFile)
 		)
+	}
+
+	private fun generatePropertyDescriptorInitializer(
+		property: KSPropertyDeclaration,
+	): CodeBlock {
+		val propertyName = property.simpleName.asString()
+		val descriptorClassName = PropertyDescriptor::class.asTypeName()
+
+		val typeKSType = property.type.resolve()
+		val typeDescriptorCode = generateTypeDescriptorCode(typeKSType)
+
+		val receiverTypeKSType = property.extensionReceiver?.toTypeName() as? KSType
+		val receiverTypeCode = receiverTypeKSType?.let { generateTypeDescriptorCode(it) }
+
+		return CodeBlock.builder().apply {
+			add("%T(\n", descriptorClassName)
+			indent()
+			add("name = %S,\n", propertyName)
+			add("type = %L,\n", typeDescriptorCode)
+			add("isMutable = %L", property.isMutable)
+			if (receiverTypeCode != null) {
+				add(",\nreceiverType = %L", receiverTypeCode)
+			}
+			add("\n")
+			unindent()
+			add(")")
+		}.build()
+	}
+
+	private fun generateFunctionDescriptorInitializer(
+		function: KSFunctionDeclaration,
+	): CodeBlock {
+		val functionName = function.simpleName.asString()
+		val descriptorClassName = FunctionDescriptor::class.asTypeName()
+
+		val returnTypeKSType = function.returnType?.resolve()
+		val returnTypeDescriptorCode = if (returnTypeKSType != null) {
+			generateTypeDescriptorCode(returnTypeKSType)
+		}
+		else {
+			CodeBlock.of("%T(classifier = %T::class)", TypeDescriptor::class.asTypeName(), UNIT)
+		}
+
+		val receiverTypeKSType = function.extensionReceiver?.toTypeName() as? KSType
+		val receiverTypeCode = receiverTypeKSType?.let { generateTypeDescriptorCode(it) }
+
+		val paramCodes = function.parameters.map { generateParameterDescriptorCode(it) }
+
+		return CodeBlock.builder().apply {
+			add("%T(\n", descriptorClassName)
+			indent()
+			add("name = %S,\n", functionName)
+			add("returnType = %L", returnTypeDescriptorCode)
+
+			if (receiverTypeCode != null) {
+				add(",\nreceiverType = %L", receiverTypeCode)
+			}
+
+			if (paramCodes.isNotEmpty()) {
+				add(",\nparameters = listOf(\n")
+				indent()
+				paramCodes.forEach { pCode ->
+					add("%L,\n", pCode)
+				}
+				unindent()
+				add(")\n")
+			}
+			else {
+				add("\n")
+			}
+
+			unindent()
+			add(")")
+		}.build()
 	}
 
 	private fun generateTypeDescriptorCode(ksType: KSType): CodeBlock {
@@ -740,89 +842,4 @@ public class KProxyableProcessor(
 		}.build()
 	}
 
-	private fun generatePropertyDescriptorStaticProperty(
-		property: KSPropertyDeclaration,
-	): PropertySpec {
-		val propertyName = property.simpleName.asString()
-		val staticPropertyName = "${propertyName}Descriptor"
-		val descriptorClassName = PropertyDescriptor::class.asTypeName()
-
-		val typeKSType = property.type.resolve()
-		val typeDescriptorCode = generateTypeDescriptorCode(typeKSType)
-
-		val receiverTypeKSType = property.extensionReceiver?.toTypeName() as? KSType
-		val receiverTypeCode = receiverTypeKSType?.let { generateTypeDescriptorCode(it) }
-
-		val initializerCode = CodeBlock.builder().apply {
-			add("%T(\n", descriptorClassName)
-			indent()
-			add("name = %S,\n", propertyName)
-			add("type = %L,\n", typeDescriptorCode)
-			add("isMutable = %L", property.isMutable)
-			if (receiverTypeCode != null) {
-				add(",\nreceiverType = %L", receiverTypeCode)
-			}
-			add("\n")
-			unindent()
-			add(")")
-		}.build()
-
-		return PropertySpec.builder(staticPropertyName, descriptorClassName)
-			.addModifiers(KModifier.PRIVATE)
-			.initializer(initializerCode)
-			.build()
-	}
-
-	private fun generateFunctionDescriptorStaticProperty(
-		function: KSFunctionDeclaration,
-	): PropertySpec {
-		val functionName = function.simpleName.asString()
-		val propertyName = "${functionName}Descriptor"
-		val descriptorClassName = FunctionDescriptor::class.asTypeName()
-
-		val returnTypeKSType = function.returnType?.resolve()
-		val returnTypeDescriptorCode = if (returnTypeKSType != null) {
-			generateTypeDescriptorCode(returnTypeKSType)
-		}
-		else {
-			CodeBlock.of("%T(classifier = %T::class)", TypeDescriptor::class.asTypeName(), UNIT)
-		}
-
-		val receiverTypeKSType = function.extensionReceiver?.toTypeName() as? KSType
-		val receiverTypeCode = receiverTypeKSType?.let { generateTypeDescriptorCode(it) }
-
-		val paramCodes = function.parameters.map { generateParameterDescriptorCode(it) }
-
-		val initializerCode = CodeBlock.builder().apply {
-			add("%T(\n", descriptorClassName)
-			indent()
-			add("name = %S,\n", functionName)
-			add("returnType = %L", returnTypeDescriptorCode)
-
-			if (receiverTypeCode != null) {
-				add(",\nreceiverType = %L", receiverTypeCode)
-			}
-
-			if (paramCodes.isNotEmpty()) {
-				add(",\nparameters = listOf(\n")
-				indent()
-				paramCodes.forEach { pCode ->
-					add("%L,\n", pCode)
-				}
-				unindent()
-				add(")\n")
-			}
-			else {
-				add("\n")
-			}
-
-			unindent()
-			add(")")
-		}.build()
-
-		return PropertySpec.builder(propertyName, descriptorClassName)
-			.addModifiers(KModifier.PRIVATE)
-			.initializer(initializerCode)
-			.build()
-	}
 }
