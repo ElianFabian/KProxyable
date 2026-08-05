@@ -7,7 +7,7 @@ suspend fun main() {
     println("=== KProxyable JS-only Sample ===")
 
     println("\n--- Testing Common Service (Cross-Module) ---")
-    val service = KProxyJs.create<ComprehensiveService>(DemoHandler())
+    val service = KProxyJs.create<CommonService>(DemoHandler())
     val result = service.performAction(42, "JS Data")
     println("Result: $result")
 

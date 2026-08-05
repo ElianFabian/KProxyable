@@ -5,7 +5,7 @@ import com.elianfabian.kproxyable.create
 suspend fun main() {
 	println("=== KProxyable KMP Sample (JVM) ===")
 
-	val service = KProxy.create<ComprehensiveService>(DemoHandler())
+	val service = KProxy.create<CommonService>(DemoHandler())
 
 	println("--- Testing Functions ---")
 	val result = service.performAction(1, "Data")

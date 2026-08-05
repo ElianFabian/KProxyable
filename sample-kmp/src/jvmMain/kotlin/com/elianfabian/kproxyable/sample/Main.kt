@@ -6,7 +6,7 @@ suspend fun main() {
     println("=== KProxyable KMP Sample (JVM) ===")
 
     println("\n--- Testing Common Service (Cross-Module) ---")
-    val service = KProxy.create<ComprehensiveService>(DemoHandler())
+    val service = KProxy.create<CommonService>(DemoHandler())
     val result = service.performAction(1, "Data")
     println("Result of performAction: $result")
 
