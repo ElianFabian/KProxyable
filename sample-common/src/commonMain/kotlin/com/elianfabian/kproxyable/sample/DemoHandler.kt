@@ -17,6 +17,7 @@ class DemoHandler : ProxyHandler {
             }
             "jvmSpecificAction" -> (args[0] as Int) * 2
             "kmpSpecificAction" -> "Processed: ${args[0]}"
+            "wasmOnly" -> "Wasm Response: ${args[0]}"
             "greet" -> "Hello from DemoHandler, ${args[0]}"
             else -> null
         }
