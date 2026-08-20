@@ -4,4 +4,4 @@ import com.elianfabian.kproxyable.*
 
 @Suppress("KotlinNoActualForExpect")
 @KProxyRegistry
-expect object KmpRegistry : KProxyFactory
+expect object KProxy : KProxyFactory

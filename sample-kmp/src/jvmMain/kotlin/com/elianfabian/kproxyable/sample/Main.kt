@@ -6,12 +6,12 @@ suspend fun main() {
     println("=== KProxyable KMP Sample (JVM) ===")
 
     println("\n--- Testing Common Service (Cross-Module) ---")
-    val service = KmpRegistry.create<CommonService>(DemoHandler())
+    val service = KProxy.create<CommonService>(DemoHandler())
     val result = service.performAction(1, "Data")
     println("Result of performAction: $result")
 
     println("\n--- Testing Local Service (Current Module) ---")
-    val localService = KmpRegistry.create<KmpLocalService>(DemoHandler())
+    val localService = KProxy.create<KmpLocalService>(DemoHandler())
     val localResult = localService.kmpSpecificAction("KMP Input")
     println("Local Result: $localResult")
 
