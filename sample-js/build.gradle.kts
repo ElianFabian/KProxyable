@@ -1,6 +1,6 @@
 plugins {
     kotlin("multiplatform")
-    id("com.elianfabian.kproxyable")
+    id("io.github.elianfabian.kproxyable")
 }
 
 kotlin {

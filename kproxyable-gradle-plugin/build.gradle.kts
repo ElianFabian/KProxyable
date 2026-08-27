@@ -1,7 +1,11 @@
 plugins {
     `kotlin-dsl`
     `java-gradle-plugin`
+    id("com.gradle.plugin-publish") version "2.0.0"
+    id("com.vanniktech.maven.publish") version "0.30.0"
 }
+
+// Coordinates are automatically derived from 'group', project name, and 'version' in gradle.properties
 
 repositories {
     mavenCentral()
@@ -9,19 +13,17 @@ repositories {
     gradlePluginPortal()
 }
 
-group = property("group")!!
-version = property("version")!!
-
-val groupProp = group
-val versionProp = version
-
 gradlePlugin {
+    website.set(project.findProperty("POM_URL") as String)
+    vcsUrl.set(project.findProperty("POM_SCM_URL") as String)
+    
     plugins {
-        create("kproxyable") {
-            id = "com.elianfabian.kproxyable"
+        register("kproxyable") {
+            id = "io.github.elianfabian.kproxyable"
             implementationClass = "com.elianfabian.kproxyable.KProxyablePlugin"
             displayName = "KProxyable Gradle Plugin"
-            description = "Automates KSP and runtime setup for KProxyable"
+            description = "Compile-time dynamic proxy generation for Kotlin Multiplatform. Automates KSP setup for cross-platform interface interception."
+            tags.set(listOf("kotlin", "multiplatform", "proxy", "ksp", "code-generation"))
         }
     }
 }
@@ -34,8 +36,8 @@ dependencies {
 // Generate a BuildConstants file to avoid hardcoding version and group in the plugin code
 val generateBuildConstants by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/sources/buildConstants/kotlin")
-    inputs.property("group", groupProp)
-    inputs.property("version", versionProp)
+    inputs.property("group", project.group)
+    inputs.property("version", project.version)
     outputs.dir(outputDir)
 
     doLast {
@@ -45,8 +47,8 @@ val generateBuildConstants by tasks.registering {
             package com.elianfabian.kproxyable
 
             internal object BuildConstants {
-                const val GROUP = "$groupProp"
-                const val VERSION = "$versionProp"
+                const val GROUP = "${project.group}"
+                const val VERSION = "${project.version}"
             }
         """.trimIndent())
     }

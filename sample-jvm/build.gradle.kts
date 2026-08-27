@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    id("com.elianfabian.kproxyable")
+    id("io.github.elianfabian.kproxyable")
     application
 }
 

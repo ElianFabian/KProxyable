@@ -3,8 +3,12 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
-	kotlin("multiplatform")
+	alias(libs.plugins.kotlin.multiplatform)
+    id("com.vanniktech.maven.publish")
 }
+
+// Global publishing settings (Sonatype host, signing) are applied in root build.gradle.kts.
+// Metadata is automatically injected from the root gradle.properties.
 
 kotlin {
 	explicitApi()

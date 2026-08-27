@@ -1,7 +1,11 @@
 plugins {
 	alias(libs.plugins.kotlin.jvm)
 	alias(libs.plugins.ksp)
+    id("com.vanniktech.maven.publish")
 }
+
+// Global publishing settings (Sonatype host, signing) are applied in root build.gradle.kts.
+// Metadata is automatically injected from the root gradle.properties.
 
 kotlin {
 	explicitApi()

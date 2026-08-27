@@ -24,16 +24,33 @@ This library uses **KSP (Kotlin Symbol Processing)** to generate proxy implement
 
 ## Installation
 
-Apply the `KProxyable` plugin in your `build.gradle.kts`:
+### 1. Apply the Gradle Plugin
+Add the `KProxyable` plugin to your root `build.gradle.kts` (or in the `plugins` block of your application module):
 
 ```kotlin
 plugins {
-    id("com.elianfabian.kproxyable") version "1.0.0"
+    id("io.github.elianfabian.kproxyable") version "1.0.0"
 }
 ```
 
-> [!NOTE]
-> The plugin automatically applies the KSP plugin and configures the necessary dependencies for the runtime and processor.
+The plugin automatically:
+- Applies the `com.google.devtools.ksp` plugin.
+- Adds the `kproxyable-runtime` dependency to `commonMain`.
+- Configures the `kproxyable-processor` for all relevant KSP configurations.
+
+### 2. Manual Dependency (Optional)
+If you prefer to manage KSP and runtime dependencies manually:
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("io.github.elianfabian:kproxyable-runtime:1.0.0")
+    ksp("io.github.elianfabian:kproxyable-processor:1.0.0")
+}
+```
 
 ---
 
