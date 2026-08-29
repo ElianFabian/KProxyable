@@ -2,7 +2,7 @@ plugins {
 	alias(libs.plugins.kotlin.jvm) apply false
 	alias(libs.plugins.kotlin.multiplatform) apply false
 	alias(libs.plugins.ksp) apply false
-	alias(libs.plugins.maven.publish) apply false
+	id("com.vanniktech.maven.publish") version "0.30.0" apply false
 }
 
 allprojects {
@@ -17,7 +17,6 @@ allprojects {
             publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
             
             val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
-            val hasSigningKey = project.hasProperty("signing.keyId") || project.hasProperty("signingInMemoryKeyId")
             
             // Auto-resolve relative GPG file path for local development
             if (project.hasProperty("signing.secretKeyRingFile")) {
@@ -30,7 +29,7 @@ allprojects {
                 }
             }
 
-            if (!isSnapshot && hasSigningKey) {
+            if (!isSnapshot) {
                 signAllPublications()
             }
         }
