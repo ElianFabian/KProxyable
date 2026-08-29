@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # Adds a manual "Run workflow" button in the GitHub UI
 
 jobs:
   build-and-stage:
@@ -55,10 +56,15 @@ jobs:
       - name: Merge Repositories
         run: |
           mkdir -p ~/.m2/repository/io/github/elianfabian
-          find staged-artifacts -type f -name "*.pom" -exec dirname {} \; | sort -u | while read dir; do
-            relative_dir=${dir#staged-artifacts/staged-repo-*/io/github/elianfabian/}
-            mkdir -p ~/.m2/repository/io/github/elianfabian/$relative_dir
-            cp -n $dir/* ~/.m2/repository/io/github/elianfabian/$relative_dir/ 2>/dev/null || true
+          # Find all directories containing a POM file and copy their contents to the local M2
+          find staged-artifacts -type f -name "*.pom" | while read pom_file; do
+            dir=$(dirname "$pom_file")
+            # Extract the relative path after the 'io/github/elianfabian' part
+            # Use sed to handle the variable staged-repo-* part
+            rel_path=$(echo "$dir" | sed 's|.*io/github/elianfabian/||')
+            dest_dir="$HOME/.m2/repository/io/github/elianfabian/$rel_path"
+            mkdir -p "$dest_dir"
+            cp -n "$dir"/* "$dest_dir/" 2>/dev/null || true
           done
 
       - name: Publish Libraries to Maven Central
