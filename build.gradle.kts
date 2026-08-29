@@ -30,12 +30,14 @@ allprojects {
                 }
             }
 
-            // Determine if we should sign
-            // On CI, we force signing so it fails loudly if keys are missing
-            // Locally, we only sign if the key is actually present
-            val shouldSign = !isSnapshot && (isCI || project.findProperty("signing.keyId") != null)
+            // Determine if we have signing credentials
+            // Vanniktech plugin looks for standard 'signing.keyId' or 'signingInMemoryKeyId'
+            val hasKeys = project.findProperty("signing.keyId") != null || 
+                         project.findProperty("signingInMemoryKeyId") != null
 
-            if (shouldSign) {
+            // On CI, we want to sign all releases. 
+            // We only skip if it's a snapshot or if we're not on CI and don't have keys.
+            if (!isSnapshot && (isCI || hasKeys)) {
                 signAllPublications()
             }
         }
