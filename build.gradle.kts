@@ -17,9 +17,9 @@ allprojects {
             publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
             
             val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
-            val hasSigningKey = project.hasProperty("signing.keyId") || System.getenv("GPG_SIGNING_KEY") != null
+            val hasSigningKey = project.hasProperty("signing.keyId") || project.hasProperty("signingInMemoryKeyId")
             
-            // Auto-resolve relative GPG file path
+            // Auto-resolve relative GPG file path for local development
             if (project.hasProperty("signing.secretKeyRingFile")) {
                 val gpgFile = project.property("signing.secretKeyRingFile") as String
                 if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
