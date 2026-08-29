@@ -29,7 +29,7 @@ Add the `KProxyable` plugin to your root `build.gradle.kts` (or in the `plugins`
 
 ```kotlin
 plugins {
-    id("io.github.elianfabian.kproxyable") version "1.0.1"
+    id("io.github.elianfabian.kproxyable") version "1.0.2"
 }
 ```
 
@@ -47,8 +47,8 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.elianfabian:kproxyable-runtime:1.0.1")
-    ksp("io.github.elianfabian:kproxyable-processor:1.0.1")
+    implementation("io.github.elianfabian:kproxyable-runtime:1.0.2")
+    ksp("io.github.elianfabian:kproxyable-processor:1.0.2")
 }
 ```
 
