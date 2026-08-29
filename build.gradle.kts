@@ -11,19 +11,6 @@ allprojects {
 		google()
 	}
 
-    // BRIDGE CI SECRETS TO GRADLE PROPERTIES
-    // Maps shell-safe underscore names to the dotted names required by plugins.
-    listOf(
-        "signing_keyId" to "signing.keyId",
-        "signing_password" to "signing.password",
-        "signing_secretKey" to "signing.secretKey",
-        "signing_secretKeyRingFile" to "signing.secretKeyRingFile"
-    ).forEach { (ciKey, gradleKey) ->
-        if (project.hasProperty(ciKey)) {
-            project.extensions.extraProperties[gradleKey] = project.property(ciKey)
-        }
-    }
-
     plugins.withId("com.vanniktech.maven.publish") {
         configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
             // Using CENTRAL_PORTAL for modern Sonatype accounts (central.sonatype.com)
@@ -31,7 +18,7 @@ allprojects {
             
             val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
             
-            // Auto-resolve relative GPG file path (for local development)
+            // Auto-resolve relative GPG file path (only for local development)
             if (project.hasProperty("signing.secretKeyRingFile")) {
                 val gpgFile = project.property("signing.secretKeyRingFile") as String
                 if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
@@ -42,11 +29,9 @@ allprojects {
                 }
             }
 
-            // Only attempt signing if we have a valid signatory configured
-            val hasSigningConfig = project.hasProperty("signing.keyId") && 
-                                   (project.hasProperty("signing.secretKey") || project.hasProperty("signing.secretKeyRingFile"))
-
-            if (!isSnapshot && hasSigningConfig) {
+            // The 'signing.keyId', etc. properties are now natively populated by 
+            // Gradle via ORG_GRADLE_PROJECT_ environment variables in CI.
+            if (!isSnapshot && project.hasProperty("signing.keyId")) {
                 signAllPublications()
             }
         }
