@@ -18,7 +18,7 @@ allprojects {
             
             val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
             
-            // Auto-resolve relative GPG file path for local development
+            // Auto-resolve relative GPG file path (only for local development)
             if (project.hasProperty("signing.secretKeyRingFile")) {
                 val gpgFile = project.property("signing.secretKeyRingFile") as String
                 if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
@@ -29,7 +29,11 @@ allprojects {
                 }
             }
 
-            if (!isSnapshot) {
+            // Only attempt signing if we have a configured signatory
+            val hasSigningConfig = project.hasProperty("signing.keyId") && 
+                                   (project.hasProperty("signing.secretKey") || project.hasProperty("signing.secretKeyRingFile"))
+
+            if (!isSnapshot && hasSigningConfig) {
                 signAllPublications()
             }
         }
