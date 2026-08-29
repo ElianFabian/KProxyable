@@ -17,7 +17,8 @@ allprojects {
             publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
             
             val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
-            
+            val isCI = System.getenv("GITHUB_ACTIONS") == "true"
+
             // Auto-resolve relative GPG file path (only for local development)
             if (project.hasProperty("signing.secretKeyRingFile")) {
                 val gpgFile = project.property("signing.secretKeyRingFile") as String
@@ -29,9 +30,12 @@ allprojects {
                 }
             }
 
-            // The 'signing.keyId', etc. properties are now natively populated by 
-            // Gradle via ORG_GRADLE_PROJECT_ environment variables in CI.
-            if (!isSnapshot && project.hasProperty("signing.keyId")) {
+            // Determine if we should sign
+            // On CI, we force signing so it fails loudly if keys are missing
+            // Locally, we only sign if the key is actually present
+            val shouldSign = !isSnapshot && (isCI || project.findProperty("signing.keyId") != null)
+
+            if (shouldSign) {
                 signAllPublications()
             }
         }

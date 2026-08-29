@@ -24,8 +24,7 @@ jobs:
         if: runner.os != 'Windows'
       
       - name: Publish Platform Artifacts
-        # Each OS builds and uploads its specific targets.
-        # ORG_GRADLE_PROJECT_signing__keyId -> maps to project property 'signing.keyId'
+        # Gradle natively maps ORG_GRADLE_PROJECT_a__b to project property 'a.b'
         run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
