@@ -1,15 +1,10 @@
-import org.gradle.api.publish.maven.MavenPublication
-
 plugins {
     `kotlin-dsl`
     `java-gradle-plugin`
     id("com.gradle.plugin-publish") version "2.0.0"
-    `maven-publish`
-    signing
 }
 
-// POM metadata is automatically injected from gradle.properties for Portal publishing.
-// We manually bridge the same values for the local Maven publication below.
+// Metadata is automatically injected from gradle.properties
 
 repositories {
     mavenCentral()
@@ -28,36 +23,6 @@ gradlePlugin {
             displayName = "KProxyable Gradle Plugin"
             description = "Compile-time dynamic proxy generation for Kotlin Multiplatform. Automates KSP setup for cross-platform interface interception."
             tags.set(listOf("kotlin", "multiplatform", "proxy", "ksp", "code-generation"))
-        }
-    }
-}
-
-// Ensure the local Maven publication has the same metadata
-publishing {
-    publications.withType<MavenPublication>().configureEach {
-        pom {
-            name.set(project.findProperty("POM_NAME") as? String)
-            description.set(project.findProperty("POM_DESCRIPTION") as? String)
-            url.set(project.findProperty("POM_URL") as? String)
-            
-            licenses {
-                license {
-                    name.set(project.findProperty("POM_LICENCE_NAME") as? String)
-                    url.set(project.findProperty("POM_LICENCE_URL") as? String)
-                }
-            }
-            developers {
-                developer {
-                    id.set(project.findProperty("POM_DEVELOPER_ID") as? String)
-                    name.set(project.findProperty("POM_DEVELOPER_NAME") as? String)
-                    email.set(project.findProperty("POM_DEVELOPER_EMAIL") as? String)
-                }
-            }
-            scm {
-                connection.set(project.findProperty("POM_SCM_CONNECTION") as? String)
-                developerConnection.set(project.findProperty("POM_SCM_DEV_CONNECTION") as? String)
-                url.set(project.findProperty("POM_SCM_URL") as? String)
-            }
         }
     }
 }

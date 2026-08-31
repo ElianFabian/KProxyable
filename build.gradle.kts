@@ -1,8 +1,11 @@
+import org.gradle.plugins.signing.SigningExtension
+import org.gradle.plugins.signing.SigningPlugin
+
 plugins {
 	alias(libs.plugins.kotlin.jvm) apply false
 	alias(libs.plugins.kotlin.multiplatform) apply false
 	alias(libs.plugins.ksp) apply false
-	alias(libs.plugins.maven.publish) apply false
+	id("com.vanniktech.maven.publish") version "0.30.0" apply false
 }
 
 allprojects {
@@ -11,24 +14,28 @@ allprojects {
 		google()
 	}
 
+    // GLOBAL SIGNING CONFIGURATION
+    // This ensures that ALL publications (Libraries + Plugin Markers) can find the GPG keys
+    plugins.withType<SigningPlugin> {
+        configure<SigningExtension> {
+            val keyId = project.findProperty("signing.keyId") as String?
+            val password = project.findProperty("signing.password") as String?
+            val secretKey = project.findProperty("signing.secretKey") as String?
+
+            if (keyId != null && password != null && secretKey != null) {
+                useInMemoryPgpKeys(keyId, secretKey, password)
+            }
+        }
+    }
+
     plugins.withId("com.vanniktech.maven.publish") {
         configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
-            val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
-            val isCI = System.getenv("GITHUB_ACTIONS") == "true"
+            // CENTRAL_PORTAL is required for all new Sonatype accounts
+            publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
             
-            // Auto-resolve relative GPG file path (only for local development)
-            if (project.hasProperty("signing.secretKeyRingFile")) {
-                val gpgFile = project.property("signing.secretKeyRingFile") as String
-                if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
-                    val resolved = rootProject.file(gpgFile)
-                    if (resolved.exists()) {
-                        project.extensions.extraProperties["signing.secretKeyRingFile"] = resolved.absolutePath
-                    }
-                }
-            }
-
-            // Enable signing for releases
-            if (!isSnapshot && (isCI || project.findProperty("signing.keyId") != null)) {
+            val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
+            if (!isSnapshot) {
+                // Vanniktech handles its own signing linkage
                 signAllPublications()
             }
         }
