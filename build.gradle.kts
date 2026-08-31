@@ -15,29 +15,32 @@ allprojects {
 	}
 
     // GLOBAL SIGNING CONFIGURATION
-    // This ensures that ALL publications (Libraries + Plugin Markers) can find the GPG keys
+    // Ensures that ALL publications (Libraries + Plugin Markers) can find the GPG keys.
+    // Supports both local file-based signing and CI in-memory signing.
     plugins.withType<SigningPlugin> {
         configure<SigningExtension> {
-            val keyId = project.findProperty("signing.keyId") as String?
-            val password = project.findProperty("signing.password") as String?
-            val secretKey = project.findProperty("signing.secretKey") as String?
+            val keyId = (project.findProperty("signing.keyId") ?: project.findProperty("signingInMemoryKeyId")) as String?
+            val password = (project.findProperty("signing.password") ?: project.findProperty("signingInMemoryKeyPassword")) as String?
+            val secretKey = (project.findProperty("signing.secretKey") ?: project.findProperty("signingInMemoryKey")) as String?
 
             if (keyId != null && password != null && secretKey != null) {
                 useInMemoryPgpKeys(keyId, secretKey, password)
             }
-        }
-    }
-
-    plugins.withId("com.vanniktech.maven.publish") {
-        configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
-            // CENTRAL_PORTAL is required for all new Sonatype accounts
-            publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
             
-            val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
-            if (!isSnapshot) {
-                // Vanniktech handles its own signing linkage
-                signAllPublications()
+            // Auto-resolve relative GPG file path for local development
+            if (project.hasProperty("signing.secretKeyRingFile")) {
+                val gpgFile = project.property("signing.secretKeyRingFile") as String
+                if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
+                    val resolved = rootProject.file(gpgFile)
+                    if (resolved.exists()) {
+                        project.extensions.extraProperties["signing.secretKeyRingFile"] = resolved.absolutePath
+                    }
+                }
             }
         }
     }
 }
+
+// Global publishing settings like 'SONATYPE_HOST' are managed via gradle.metadata.properties
+// and are automatically picked up by the 'com.vanniktech.maven.publish' plugin.
+// By avoiding manual 'mavenPublishing { ... }' blocks in the root, we prevent property finalization errors.
