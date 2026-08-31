@@ -8,34 +8,28 @@ on:
 
 jobs:
   publish:
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: 21
       
       - name: Make Gradlew Executable
         run: chmod +x gradlew
-        if: runner.os != 'Windows'
       
-      - name: Publish Platform Artifacts
-        # Vanniktech plugin has specific support for signingInMemoryKey* variables in CI
-        run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache
+      - name: Publish to Maven Central and Gradle Portal
+        # macOS can build all targets (iOS, macOS, Linux, Windows, JVM, JS, Wasm)
+        # This performs a single atomic upload of the entire multi-platform bundle.
+        run: ./gradlew publishAllPublicationsToMavenCentralRepository :kproxyable-gradle-plugin:publishPlugins --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_SIGNING_KEY }}
-
-      - name: Publish Plugin to Portal
-        if: matrix.os == 'ubuntu-latest'
-        run: ./gradlew :kproxyable-gradle-plugin:publishPlugins --no-configuration-cache
-        env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
