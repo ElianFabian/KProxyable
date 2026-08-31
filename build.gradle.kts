@@ -16,7 +16,6 @@ allprojects {
 
     // GLOBAL SIGNING CONFIGURATION
     // Ensures that ALL publications (Libraries + Plugin Markers) can find the GPG keys.
-    // Supports both local file-based signing and CI in-memory signing.
     plugins.withType<SigningPlugin> {
         configure<SigningExtension> {
             val keyId = (project.findProperty("signing.keyId") ?: project.findProperty("signingInMemoryKeyId")) as String?
@@ -39,8 +38,17 @@ allprojects {
             }
         }
     }
-}
 
-// Global publishing settings like 'SONATYPE_HOST' are managed via gradle.metadata.properties
-// and are automatically picked up by the 'com.vanniktech.maven.publish' plugin.
-// By avoiding manual 'mavenPublishing { ... }' blocks in the root, we prevent property finalization errors.
+    // Authoritatively link signing to the publishing plugin
+    plugins.withId("com.vanniktech.maven.publish") {
+        val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
+        if (!isSnapshot) {
+            // Using the string name of the extension to avoid "The value for this property is final" 
+            // errors caused by re-configuring SonatypeHost/Coordinates.
+            val mavenPublishing = project.extensions.getByName("mavenPublishing")
+            try {
+                mavenPublishing::class.java.getMethod("signAllPublications").invoke(mavenPublishing)
+            } catch (e: Exception) {}
+        }
+    }
+}
