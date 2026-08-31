@@ -1,4 +1,4 @@
-# KProxyable
+houl# KProxyable
 
 **Compile-time Dynamic Proxies for Kotlin Multiplatform.**
 
@@ -142,6 +142,13 @@ interface UserApi {
 ```
 
 ---
+
+## 🤖 About the Project
+
+KProxyable is a showcase of **AI-Collaborative Engineering**. 
+
+The implementation of this library, including its KSP processor and complex multi-platform CI/CD pipeline, was primarily driven by AI assistants working under human architectural guidance.
+This project serves as an experiment in how modern AI tools can accelerate the development of professional-grade, specialized infrastructure for the Kotlin ecosystem.
 
 ## License
 
