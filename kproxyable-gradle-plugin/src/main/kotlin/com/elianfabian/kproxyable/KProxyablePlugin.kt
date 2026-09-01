@@ -2,22 +2,37 @@ package com.elianfabian.kproxyable
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 /**
  * Gradle plugin for KProxyable.
  *
- * This plugin automates the setup of KSP and runtime dependencies for KProxyable,
+ * This plugin automates the setup of processor and runtime dependencies for KProxyable,
  * supporting JVM-only, JS-only, and Multiplatform projects.
  *
  * Fully compatible with Gradle Configuration Cache.
  */
 class KProxyablePlugin : Plugin<Project> {
     override fun apply(project: Project) {
-        // 1. Apply KSP plugin immediately to enable code generation
-        project.plugins.apply("com.google.devtools.ksp")
+        // 1. Verify KSP plugin is applied by the user
+        // We do NOT apply it ourselves to avoid forcing a specific version (Out-of-the-Box KMP practice)
+        project.plugins.withId("com.google.devtools.ksp") {
+            configurePlugin(project)
+        }
+        
+        project.afterEvaluate {
+            if (!project.plugins.hasPlugin("com.google.devtools.ksp")) {
+                throw GradleException(
+                    "KProxyable requires the KSP plugin to be applied. " +
+                    "Please add id(\"com.google.devtools.ksp\") version \"<matching-kotlin-version>\" to your build.gradle.kts."
+                )
+            }
+        }
+    }
 
+    private fun configurePlugin(project: Project) {
         // 2. Multiplatform Support
         project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
             val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -29,17 +44,18 @@ class KProxyablePlugin : Plugin<Project> {
             if (!project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform")) {
                 project.dependencies.add("implementation", project.kproxyDependency("runtime"))
                 project.dependencies.add("ksp", project.kproxyDependency("processor"))
+                project.dependencies.add("kspTest", project.kproxyDependency("processor"))
             }
         }
 
-        // 4. JS-only Support (Using lazy configuration instead of afterEvaluate)
+        // 4. JS-only Support
         project.plugins.withId("org.jetbrains.kotlin.js") {
             if (!project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform")) {
                 project.dependencies.add("implementation", project.kproxyDependency("runtime"))
                 
                 // Use lazy configuration to find the correct KSP target
                 project.configurations.configureEach {
-                    if (name == "kspKotlinJs") {
+                    if (name == "kspKotlinJs" || name == "kspTestKotlinJs") {
                         project.dependencies.add(name, project.kproxyDependency("processor"))
                     }
                 }
@@ -67,14 +83,14 @@ class KProxyablePlugin : Plugin<Project> {
                 try {
                     val kotlin = project.extensions.findByName("kotlin")
                     val targets = kotlin?.javaClass?.methods?.find { it.name == "getTargets" }?.invoke(kotlin) as? Iterable<*>
-                    val hasJsExecutable = targets?.any { target ->
-                        target?.javaClass?.name?.contains("KotlinJs", ignoreCase = true) == true &&
-                        (target.javaClass.methods.find { it.name == "getBinaries" }?.invoke(target) as? Iterable<*>)?.any { binary ->
+                    val hasExecutable = targets?.any { target ->
+                        val binaries = target?.javaClass?.methods?.find { it.name == "getBinaries" }?.invoke(target) as? Iterable<*>
+                        binaries?.any { binary ->
                             binary?.javaClass?.name?.contains("Executable", ignoreCase = true) == true
                         } == true
                     } ?: false
                     
-                    hasJsExecutable.toString()
+                    hasExecutable.toString()
                 } catch (e: Exception) { "false" }
             }
             arg("kproxyable.isApp", isAppProvider)
@@ -113,7 +129,14 @@ class KProxyablePlugin : Plugin<Project> {
                 "ksp${name.replaceFirstChar { it.uppercase() }}"
             }
             
+            val kspTestConfigName = if (name == "metadata") {
+                "kspTestCommonMainMetadata" // Usually not needed, but for completeness
+            } else {
+                "ksp${name.replaceFirstChar { it.uppercase() }}Test"
+            }
+            
             project.dependencies.add(kspConfigName, project.kproxyDependency("processor"))
+            project.dependencies.add(kspTestConfigName, project.kproxyDependency("processor"))
 
             // Handle resource linking for Web targets (lazy configuration)
             if (platformType.name.contains("js", ignoreCase = true)) {

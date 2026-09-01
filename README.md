@@ -24,19 +24,24 @@ This library uses **KSP (Kotlin Symbol Processing)** to generate proxy implement
 
 ## Installation
 
-### 1. Apply the Gradle Plugin
-Add the `KProxyable` plugin to your root `build.gradle.kts` (or in the `plugins` block of your application module):
+### 1. Apply KSP and KProxyable Plugins
+KProxyable requires the KSP plugin to be applied in your project. You must use the KSP version that matches your Kotlin version.
+
+In your root `build.gradle.kts` (or application module):
 
 ```kotlin
 plugins {
-    id("io.github.elianfabian.kproxyable") version "1.0.4"
+    // 1. Apply KSP with version matching your Kotlin version
+    id("com.google.devtools.ksp") version "2.0.21-1.0.28"
+    
+    // 2. Apply KProxyable
+    id("io.github.elianfabian.kproxyable") version "1.0.5"
 }
 ```
 
-The plugin automatically:
-- Applies the `com.google.devtools.ksp` plugin.
+The KProxyable plugin automatically:
 - Adds the `kproxyable-runtime` dependency to `commonMain`.
-- Configures the `kproxyable-processor` for all relevant KSP configurations.
+- Configures the `kproxyable-processor` for all Main and Test configurations (supporting cross-module discovery and unit tests).
 
 ### 2. Manual Dependency (Optional)
 If you prefer to manage KSP and runtime dependencies manually:
@@ -47,8 +52,9 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.elianfabian:kproxyable-runtime:1.0.4")
-    ksp("io.github.elianfabian:kproxyable-processor:1.0.4")
+    implementation("io.github.elianfabian:kproxyable-runtime:1.0.5")
+    ksp("io.github.elianfabian:kproxyable-processor:1.0.5")
+    kspTest("io.github.elianfabian:kproxyable-processor:1.0.5")
 }
 ```
 
@@ -57,7 +63,7 @@ dependencies {
 ## Basic Usage
 
 ### 1. Define your Interface
-Annotate any interface with `@KProxyable`:
+Annotate any `public` or `internal` interface with `@KProxyable`:
 
 ```kotlin
 import com.elianfabian.kproxyable.KProxyable
