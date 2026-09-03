@@ -1,7 +1,7 @@
 plugins {
 	alias(libs.plugins.kotlin.jvm)
 	alias(libs.plugins.ksp)
-    id("com.vanniktech.maven.publish")
+	id("com.vanniktech.maven.publish")
 }
 
 // Global publishing settings (Sonatype host, signing) are applied in root build.gradle.kts.

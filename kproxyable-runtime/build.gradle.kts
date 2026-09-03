@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
 	alias(libs.plugins.kotlin.multiplatform)
-    id("com.vanniktech.maven.publish")
+	id("com.vanniktech.maven.publish")
 }
 
 // Global publishing settings (Sonatype host, signing) are applied in root build.gradle.kts.
@@ -48,7 +48,7 @@ kotlin {
 
 // Package ProGuard rules for JVM consumers
 tasks.named<Jar>("jvmJar") {
-    from("kproxyable.pro") {
-        into("META-INF/proguard")
-    }
+	from("kproxyable.pro") {
+		into("META-INF/proguard")
+	}
 }

@@ -1,6 +1,7 @@
 package com.elianfabian.kproxyable.sample
 
-import com.elianfabian.kproxyable.*
+import com.elianfabian.kproxyable.KProxyFactory
+import com.elianfabian.kproxyable.KProxyRegistry
 
 @Suppress("KotlinNoActualForExpect")
 @KProxyRegistry

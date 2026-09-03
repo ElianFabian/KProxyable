@@ -4,5 +4,5 @@ import com.elianfabian.kproxyable.KProxyable
 
 @KProxyable
 interface KmpLocalService {
-    fun kmpSpecificAction(input: String): String
+	fun kmpSpecificAction(input: String): String
 }

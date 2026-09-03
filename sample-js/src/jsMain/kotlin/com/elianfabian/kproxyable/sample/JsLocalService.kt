@@ -4,5 +4,5 @@ import com.elianfabian.kproxyable.KProxyable
 
 @KProxyable
 public interface JsLocalService {
-    public fun greet(name: String): String
+	public fun greet(name: String): String
 }

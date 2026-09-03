@@ -3,26 +3,10 @@ package com.elianfabian.kproxyable.sample
 import com.elianfabian.kproxyable.create
 
 suspend fun main() {
-	println("=== KProxyable KMP Sample (JVM) ===")
+	runCommonTests(KProxy, "KMP (JS)")
 
-	val service = KProxy.create<CommonService>(DemoHandler())
-
-	println("--- Testing Functions ---")
-	val result = service.performAction(1, "Data")
-	println("Result of performAction: $result")
-
-	println("--- Testing Suspend ---")
-	val data = service.fetchDataAsync("KMP Query")
-	println("Async data: $data")
-
-	println("--- Testing Properties ---")
-	println("Version: ${service.version}")
-	println("Is Active (initial): ${service.isActive}")
-	service.isActive = true
-	println("Is Active (updated): ${service.isActive}")
-
-	println("--- Testing Any Methods ---")
-	println("ToString: $service")
-	println("HashCode: ${service.hashCode()}")
-	println("Equals self: ${service == service}")
+	println("\n--- Testing Local Service (Current Module) ---")
+	val localService = KProxy.create<JsPlatformService>(DemoHandler())
+	val localResult = localService.jsOnly("JS Input")
+	println("Local Result: $localResult")
 }

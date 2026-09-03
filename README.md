@@ -2,59 +2,65 @@
 
 **Compile-time Dynamic Proxies for Kotlin Multiplatform.**
 
-`KProxyable` is a library that brings the power of dynamic proxies to the entire Kotlin Multiplatform (KMP) ecosystem. While the JVM has `java.lang.reflect.Proxy`, other platforms like JS, Native, and Wasm lack a built-in mechanism to intercept interface invocations at runtime without manual boilerplate.
+`KProxyable` brings the power of dynamic proxies to the entire Kotlin Multiplatform (KMP) ecosystem.
+Intercept interface invocations at runtime with zero reflection, maximum performance, and full type
+safety.
 
-This library uses **KSP (Kotlin Symbol Processing)** to generate proxy implementations at compile-time, providing a unified, type-safe API to intercept function calls, property accesses, and standard `Any` methods across all targets.
+This library uses **KSP (Kotlin Symbol Processing)** to generate proxy implementations and registry
+linkages at compile-time.
 
 ## Key Features
 
-- 🌍 **Full KMP Support**: Works on JVM, JS, Native (iOS, macOS, Linux, Windows), and WasmJs.
-- ⚡ **Zero Runtime Reflection**: Proxy logic is generated at compile-time for maximum performance.
-- 🔄 **Unified Interception**: Transparently handle both synchronous and `suspend` function calls.
-- 🛠️ **Property Support**: Intercept property getters and setters with ease.
+- 🌍 **Pure KMP Architecture**: Works seamlessly on JVM, JS, Native (iOS, Android, Desktop), and
+  WasmJs.
+- ⚡ **Zero Runtime Reflection**: Proxy logic and factory linkage are generated at compile-time.
+- 🔄 **Unified Interception**: Handle both synchronous and `suspend` function calls.
+- 🛠️ **Property Interception**: Intercept property getters and setters.
 - 🔍 **Any Method Interception**: Custom behavior for `equals`, `hashCode`, and `toString`.
-- 🏷️ **Meta-Annotations**: Create custom annotations (e.g., `@HttpClient`) to automatically trigger proxy generation.
-- 📦 **Cross-Module Discovery**: Seamlessly discover and use proxies defined in separate library modules; KProxyable automatically bundles them into your main application registry.
-
-## Limitations
-
-- 🔒 **Interface Visibility**: Only `public` or `internal` interfaces are supported. `private` interfaces cannot be proxied as the generated implementation needs to be able to see and implement the interface.
+- 📦 **Cross-Module Discovery**: Automatically aggregates proxies from separate library modules into
+  your main application.
 
 ---
 
 ## Installation
 
 ### 1. Apply KSP and KProxyable Plugins
-KProxyable requires the KSP plugin to be applied in your project. You must use the KSP version that matches your Kotlin version.
 
-In your root `build.gradle.kts` (or application module):
+KProxyable requires the `kotlin("multiplatform")` plugin to be applied, even for single-target
+projects.
+
+In your root `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    // 1. Apply KSP with version matching your Kotlin version
-    id("com.google.devtools.ksp") version "2.0.21-1.0.28"
-    
-    // 2. Apply KProxyable
-    id("io.github.elianfabian.kproxyable") version "1.0.5"
+	// 1. Apply KSP matching your Kotlin version
+	id("com.google.devtools.ksp") version "2.0.21-1.0.28"
+
+	// 2. Apply KProxyable
+	id("io.github.elianfabian.kproxyable") version "1.1.0"
 }
 ```
 
-The KProxyable plugin automatically:
-- Adds the `kproxyable-runtime` dependency to `commonMain`.
-- Configures the `kproxyable-processor` for all Main and Test configurations (supporting cross-module discovery and unit tests).
+### 2. Single-Target Projects
 
-### 2. Manual Dependency (Optional)
-If you prefer to manage KSP and runtime dependencies manually:
+If you are building an application that only targets one platform (e.g., JVM-only or JS-only), you
+must still use the multiplatform plugin to enable the `expect/actual` mechanism:
 
 ```kotlin
-repositories {
-    mavenCentral()
+// build.gradle.kts
+plugins {
+	kotlin("multiplatform")
+	id("io.github.elianfabian.kproxyable")
 }
 
-dependencies {
-    implementation("io.github.elianfabian:kproxyable-runtime:1.0.5")
-    ksp("io.github.elianfabian:kproxyable-processor:1.0.5")
-    kspTest("io.github.elianfabian:kproxyable-processor:1.0.5")
+kotlin {
+	jvm() // or js(IR), or androidTarget()
+
+	sourceSets {
+		commonMain.dependencies {
+			// Your dependencies here
+		}
+	}
 }
 ```
 
@@ -63,87 +69,86 @@ dependencies {
 ## Basic Usage
 
 ### 1. Define your Interface
+
 Annotate any `public` or `internal` interface with `@KProxyable`:
 
 ```kotlin
-import com.elianfabian.kproxyable.KProxyable
-
 @KProxyable
 interface MyService {
-    fun doSomething(id: Int, name: String): String
-    suspend fun fetchData(query: String): List<String>
-    var isActive: Boolean
+	fun doSomething(id: Int): String
+	suspend fun fetchData(): List<String>
+	var isActive: Boolean
 }
 ```
 
-### 2. Implement a ProxyHandler
-The `ProxyHandler` is responsible for intercepting all calls to the proxy instance:
+### 2. Create a Shared Registry
+
+Define an `expect object` in `commonMain` (or `commonTest`) annotated with `@KProxyRegistry`. This
+is your entry point for creating proxies.
+
+```kotlin
+// src/commonMain/kotlin/...
+import com.elianfabian.kproxyable.KProxyFactory
+import com.elianfabian.kproxyable.KProxyRegistry
+
+@KProxyRegistry
+expect object KProxy : KProxyFactory
+```
+
+KProxyable will automatically generate the `actual` implementation in all your target source sets,
+linking all discovered proxies.
+
+### 3. Implement a ProxyHandler
+
+The `ProxyHandler` intercepts all calls to the proxy instance. You must implement all its methods:
 
 ```kotlin
 class MyHandler : ProxyHandler {
-    override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {
-        println("Calling ${function.name} with $args")
-        return "Intercepted result"
-    }
+	override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {
+		println("Calling ${function.name} with $args")
+		return "Intercepted result"
+	}
 
-    override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
-        return listOf("Async", "Result")
-    }
+	override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
+		return listOf("Async", "Result")
+	}
 
-    // Handle properties, equals, hashCode, and toString...
+	override fun onGetProperty(property: PropertyDescriptor): Any? {
+		return if (property.name == "isActive") true else null
+	}
+
+	override fun onSetProperty(property: PropertyDescriptor, value: Any?) {
+		println("Setting ${property.name} to $value")
+	}
+
+	override fun onEquals(other: Any?): Boolean = this === other
+	override fun onHashCode(): Int = 42
+	override fun onToString(): String = "MyProxyHandler"
 }
 ```
 
-### 3. Create the Proxy
-Use the `create` factory method to instantiate your intercepted interface:
+### 4. Create the Proxy
+
+Use the `create` extension method on your registry:
 
 ```kotlin
-// In JVM projects
-val service = KProxyJvm.create<MyService>(MyHandler())
-
-// In JS projects
-val service = KProxyJs.create<MyService>(MyHandler())
+val service = KProxy.create<MyService>(MyHandler())
 ```
 
 ---
 
-## Platform-Specific Entry Points
+## Advanced: JVM / Android Applications
 
-KProxyable provides optimized entry points depending on your project type:
-
-### JVM-only Projects
-Use `KProxyJvm` for standard JVM or Android applications. It uses a lightweight `ServiceLoader` mechanism to discover generated registries.
-
-### JS-only Projects
-Use `KProxyJs` for Kotlin/JS projects. It leverages global scope hooks to link generated code without reflection.
-
-### Kotlin Multiplatform (KMP) & Native
-In a KMP project, you can define a shared entry point in `commonMain` using an `expect object`:
+When using the Gradle `application` plugin or building an Android APK, the standard "run" tasks
+might not automatically include KSP-generated classes in their classpath. You can fix this with a
+simple helper in your `build.gradle.kts`:
 
 ```kotlin
-// commonMain
-@KProxyRegistry
-expect object MyProxyFactory : KProxyFactory
-
-// usage
-val service = MyProxyFactory.create<MyService>(MyHandler())
-```
-KSP will automatically generate the `actual` implementation in your platform-specific source sets, aggregating all `@KProxyable` interfaces found in your project and its dependencies.
-
----
-
-## Advanced: Meta-Annotations
-
-Instead of using `@KProxyable` everywhere, you can create your own domain-specific annotations:
-
-```kotlin
-@Target(AnnotationTarget.CLASS)
-@KProxyable // This makes @MyClient a proxy trigger
-annotation class MyClient
-
-@MyClient
-interface UserApi {
-    fun getUser(id: String): User
+// help the application plugin find KMP/KSP outputs
+tasks.withType<JavaExec>().configureEach {
+	val jvmTarget =
+		kotlin.targets.getByName("jvm") as org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
+	classpath += jvmTarget.compilations.getByName("main").output.allOutputs
 }
 ```
 
@@ -151,11 +156,10 @@ interface UserApi {
 
 ## 🤖 About the Project
 
-KProxyable is a showcase of **AI-Collaborative Engineering**. 
-
-The implementation of this library, including its KSP processor and complex multi-platform CI/CD pipeline, was primarily driven by AI assistants working under human architectural guidance.
-This project serves as an experiment in how modern AI tools can accelerate the development of professional-grade, specialized infrastructure for the Kotlin ecosystem.
+KProxyable is a showcase of **AI-Collaborative Engineering**.
+The library's specialized infrastructure, including its KSP processor and multi-platform linkage
+system, was primarily implemented by AI assistants under human architectural guidance.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE) for details.
