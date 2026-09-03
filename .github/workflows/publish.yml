@@ -3,7 +3,7 @@ name: Publish
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
   workflow_dispatch:
 
 jobs:
@@ -11,16 +11,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: 21
-      
+
       - name: Make Gradlew Executable
         run: chmod +x gradlew
-      
+
       - name: Publish to Maven Central and Gradle Portal
         # macOS can build all targets (iOS, macOS, Linux, Windows, JVM, JS, Wasm)
         # This performs a single atomic upload of the entire multi-platform bundle.
