@@ -19,15 +19,15 @@ linkages at compile-time.
 - 🔍 **Any Method Interception**: Custom behavior for `equals`, `hashCode`, and `toString`.
 - 📦 **Cross-Module Discovery**: Automatically aggregates proxies from separate library modules into
   your main application.
-- 🚀 **Kotlin 2.x Lineage**: Fully compatible with Kotlin 2.0, 2.1, 2.2, and 2.4+.
+- 🚀 **Kotlin 2.x Lineage**: Fully compatible with Kotlin 2.0 through 2.4+.
 
 ---
 
 ## Installation
 
-### 1. Apply Plugins
+### 1. Root Project Setup
 
-KProxyable requires the KSP plugin. In your root `build.gradle.kts`:
+In your root `build.gradle.kts`, apply the KSP and KProxyable plugins:
 
 ```kotlin
 plugins {
@@ -35,16 +35,17 @@ plugins {
     id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
 
     // 2. Apply KProxyable
-    id("io.github.elianfabian.kproxyable") version "$version    " apply false
+    id("io.github.elianfabian.kproxyable") version "$version" apply false
 }
 ```
 
-### 2. Module Setup (App or Library)
+### 2. Module Setup
 
-The plugin works **automagically** for Multiplatform, Pure JVM, and Pure JS projects. 
-Manual dependency blocks for the processor or runtime are no longer required.
+KProxyable is built on the **Kotlin Multiplatform (KMP)** engine to enable zero-reflection linkage 
+via `expect/actual`. It works automagically for all KMP projects.
 
-#### For Multiplatform Projects
+In your module's `build.gradle.kts`:
+
 ```kotlin
 plugins {
     kotlin("multiplatform")
@@ -53,20 +54,47 @@ plugins {
 }
 
 kotlin {
-    jvm()
-    iosArm64()
-    // ... other targets
+    jvm() // or js(), wasmJs(), androidTarget(), etc.
+    
+    // The plugin automatically handles dependencies for you!
 }
 ```
 
-#### For Pure JVM Projects
+---
+
+## Migration Guide: Single-Target Projects (JVM/JS)
+
+If you have an existing project using a single-target plugin like `kotlin("jvm")` or `kotlin("js")`, 
+you can easily convert it to a **Single-Target KMP** project to use KProxyable.
+
+### Converting from `kotlin("jvm")` to KMP:
+
+**Before:**
 ```kotlin
 plugins {
-    kotlin("jvm")
+    kotlin("jvm") version "2.0.21"
+}
+```
+
+**After:**
+```kotlin
+plugins {
+    kotlin("multiplatform") version "2.0.21"
     id("com.google.devtools.ksp")
     id("io.github.elianfabian.kproxyable")
 }
+
+kotlin {
+    jvm() // Defines the single target
+    
+    // Your code moves from src/main to src/commonMain 
+    // or you can configure source sets manually.
+}
 ```
+
+> [!TIP]
+> Using KMP even for a single target allows you to use the `expect/actual` mechanism for the 
+> `KProxy` registry, which is what makes KProxyable so fast and reflection-free!
 
 ---
 
@@ -99,8 +127,8 @@ import com.elianfabian.kproxyable.KProxyRegistry
 expect object KProxy : KProxyFactory
 ```
 
-KProxyable will automatically generate the `actual` implementation in all your target source sets,
-linking all discovered proxies from the current module and all dependencies.
+KProxyable will automatically generate the `actual` implementation in your target platform,
+linking all discovered proxies from the current module and all library dependencies.
 
 ### 3. Implement a ProxyHandler
 
@@ -148,13 +176,8 @@ val service = KProxy.create<MyService>(MyHandler())
 To ensure the library remains stable across the rapidly evolving Kotlin 2.x ecosystem, we've included 
 automation scripts in the `scratch/` folder.
 
-You can test a specific version:
 ```powershell
-powershell -File scratch/run_matrix.ps1 -Version 2.1.0
-```
-
-Or run the full verified suite:
-```powershell
+# Run the full verified suite (2.0 - 2.4)
 powershell -File scratch/test_all_versions.ps1
 ```
 

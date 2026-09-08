@@ -19,7 +19,20 @@ The plugin manages the following aspects of a project:
 
 ---
 
-## 2. Version Baseline Strategy
+## 2. Platform Strategy
+
+KProxyable is strictly built for **Kotlin Multiplatform (KMP)**. The plugin requires the 
+`org.jetbrains.kotlin.multiplatform` plugin to be applied to the project.
+
+- **Why KMP?**: KProxyable's zero-reflection discovery mechanism relies on the `expect/actual` 
+  feature of Kotlin. 
+- **Single-Target Projects**: Projects targeting only JVM or JS are encouraged to use a 
+  Single-Target KMP configuration (e.g., applying the multiplatform plugin but only defining 
+  the `jvm()` target).
+
+---
+
+## 3. Version Baseline Strategy
 
 To ensure KProxyable is compatible with the entire Kotlin 2.x lineage (from 2.0.0 to 2.4.x), the
 plugin uses a **Baseline Strategy**:
@@ -32,27 +45,26 @@ plugin uses a **Baseline Strategy**:
 
 ---
 
-## 3. Truly Unified Setup
+## 4. Truly Unified Setup
 
-Unlike older versions that had separate logic for "Apps" and "Libraries," the current plugin
-implements a **Truly Unified** model:
+The current plugin implements a **Truly Unified** model:
 
 - Every module defines its own local registry.
 - Every module with an `expect object KProxy` receives an `actual` implementation that
   statically links all discovered dependencies.
 
-### Lazy Classpath Injection
+### Full Classpath Injection
 
 The processor needs to know the full classpath to find "breadcrumb" files in dependencies.
 
 - **The Solution**: Uses a `project.provider` to lazily resolve the paths only during task
   execution. This avoids "Configuration already resolved" errors during the Gradle configuration
   phase.
-- **Argument**: Passed via `kproxyable.classpath`.
+- **Argument**: Passed via `kproxyable.fullClasspath`.
 
 ---
 
-## 4. Web Resource Handling (JS/WasmJs)
+## 5. Web Resource Handling (JS/WasmJs)
 
 In web targets, KSP-generated resources (like `META-INF/services`) are often missed by default.
 
@@ -64,19 +76,10 @@ In web targets, KSP-generated resources (like `META-INF/services`) are often mis
 
 ---
 
-## 5. KSP Compiler Arguments
+## 6. KSP Compiler Arguments
 
 | Argument                | Value Type | Description                                                       |
 |:------------------------|:-----------|:------------------------------------------------------------------|
 | `kproxyable.moduleName` | String     | A sanitized, unique identifier for the module's registry.         |
 | `kproxyable.isTest`     | Boolean    | Flags if we are generating for a Test source set.                 |
-| `kproxyable.classpath`  | String     | Path-separated list of all dependencies for breadcrumb discovery. |
-
----
-
-## 6. Development Mode
-
-The plugin includes logic to detect if it is running within the KProxyable repository itself.
-
-- **Internal**: Uses `project(":kproxyable-...")` for immediate compilation feedback.
-- **External**: Resolves dependencies using the published group and version for consumers.
+| `kproxyable.fullClasspath` | String  | Path-separated list of all dependencies for breadcrumb discovery. |

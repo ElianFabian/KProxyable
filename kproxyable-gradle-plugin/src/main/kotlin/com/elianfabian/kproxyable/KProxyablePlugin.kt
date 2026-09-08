@@ -9,10 +9,6 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import java.io.File
 
-/**
- * Gradle plugin for KProxyable.
- * Version 1.1.1: Automagic dependency injection and cross-module discovery.
- */
 class KProxyablePlugin : Plugin<Project> {
 	override fun apply(project: Project) {
 		project.plugins.withId("com.google.devtools.ksp") {
@@ -23,45 +19,44 @@ class KProxyablePlugin : Plugin<Project> {
 	private fun configurePlugin(project: Project) {
 		val moduleName = project.path.split(":", "-").filter { it.isNotEmpty() }.joinToString("_").ifEmpty { "root" }
 
-		// 1. KMP Configuration
+		// KProxyable strictly requires the Kotlin Multiplatform plugin to enable expect/actual linkage.
 		project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
 			val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+
+			kotlin.targets.all {
+				compilations.all {
+					compileTaskProvider.configure {
+						compilerOptions {
+							freeCompilerArgs.add("-Xexpect-actual-classes")
+						}
+					}
+				}
+			}
+
+			project.tasks.withType(AbstractCopyTask::class.java).configureEach {
+				if (name.contains("ProcessResources", ignoreCase = true)) {
+					duplicatesStrategy = DuplicatesStrategy.INCLUDE
+				}
+			}
+
 			configureKmp(project, kotlin)
 		}
 
-		// 2. Pure JVM Configuration
-		project.plugins.withId("org.jetbrains.kotlin.jvm") {
-			project.dependencies.add("implementation", project.kproxyDependency("runtime"))
-			project.dependencies.add("ksp", project.kproxyDependency("processor"))
-            project.dependencies.add("testImplementation", project.kproxyDependency("runtime"))
-            project.dependencies.add("kspTest", project.kproxyDependency("processor"))
-		}
-
-		// 3. Pure JS Configuration
-		project.plugins.withId("org.jetbrains.kotlin.js") {
-			project.dependencies.add("implementation", project.kproxyDependency("runtime"))
-			project.dependencies.add("ksp", project.kproxyDependency("processor"))
-		}
-
-		// 4. Global resource fixes for tasks
-		project.tasks.withType(AbstractCopyTask::class.java).configureEach {
-			if (name.contains("ProcessResources", ignoreCase = true)) {
-				duplicatesStrategy = DuplicatesStrategy.INCLUDE
-			}
-		}
-
-		// 5. Global KSP setup
+		// Global KSP setup
 		project.extensions.configure(KspExtension::class.java) {
 			arg("kproxyable.moduleName", moduleName)
 
 			val classpathProvider = project.provider {
 				val files = mutableSetOf<File>()
+				
+				// 1. All resolvable configurations (aggressive search for breadcrumbs)
 				project.configurations.all {
 					if (isCanBeResolved && (name.contains("CompileClasspath") || name.contains("RuntimeClasspath"))) {
 						try { files.addAll(this.files) } catch (_: Exception) {}
 					}
 				}
 
+				// 2. Local project resources (for incremental local builds)
 				project.configurations.all {
                     if (isCanBeResolved) {
                         incoming.dependencies.filterIsInstance<org.gradle.api.artifacts.ProjectDependency>().forEach { dep ->
@@ -73,6 +68,7 @@ class KProxyablePlugin : Plugin<Project> {
                         }
                     }
 				}
+
 				files.joinToString(File.pathSeparator) { it.absolutePath }
 			}
 			arg("kproxyable.fullClasspath", classpathProvider)
@@ -88,6 +84,7 @@ class KProxyablePlugin : Plugin<Project> {
 			if (platformType == KotlinPlatformType.common) return@configureEach
 			val targetName = this.name
 
+            // Automagic Processor Injection
             val kspConfigName = if (targetName == "metadata") "kspCommonMainMetadata" else "ksp${targetName.replaceFirstChar { it.uppercase() }}"
             project.dependencies.add(kspConfigName, project.kproxyDependency("processor"))
 
@@ -104,7 +101,7 @@ class KProxyablePlugin : Plugin<Project> {
 				val kspResourceDir = project.layout.buildDirectory.dir("generated/ksp/$targetName/$targetName${compilationName.replaceFirstChar { it.uppercase() }}/resources")
 				defaultSourceSet.resources.srcDir(kspResourceDir)
 
-				// Task Wiring - Avoid circular dependencies by only wiring main compilation
+				// Task Wiring
 				val kspTask = project.tasks.matching { it.name == kspTaskName }
                 if (!isTest) {
                     project.tasks.matching { it.name == "compileKotlin${targetName.replaceFirstChar { it.uppercase() }}" }.configureEach { dependsOn(kspTask) }
@@ -133,7 +130,7 @@ class KProxyablePlugin : Plugin<Project> {
 			project.rootProject.project(":kproxyable-$module")
 		}
 		catch (_: Exception) {
-			"io.github.elianfabian:kproxyable-$module:1.1.1"
+			"io.github.elianfabian:kproxyable-$module:1.1.4"
 		}
 	}
 }
