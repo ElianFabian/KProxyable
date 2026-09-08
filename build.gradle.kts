@@ -6,11 +6,11 @@ plugins {
 }
 
 rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
-    rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().apply {
-        yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.NONE
-        reportNewYarnLock = false
-        yarnLockAutoReplace = true
-    }
+	rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().apply {
+		yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.NONE
+		reportNewYarnLock = false
+		yarnLockAutoReplace = true
+	}
 }
 
 allprojects {
@@ -47,12 +47,12 @@ allprojects {
 
 // ARROGANTLY DISABLE SIGNING IN MATRIX MODE
 allprojects {
-    afterEvaluate {
-        if (rootProject.findProperty("kproxyable.matrix") == "true") {
-            tasks.matching { it.name.contains("sign", ignoreCase = true) }.configureEach {
-                enabled = false
-            }
-            project.extensions.extraProperties["vanniktech.publish.signing.required"] = "false"
-        }
-    }
+	afterEvaluate {
+		if (rootProject.findProperty("kproxyable.matrix") == "true") {
+			tasks.matching { it.name.contains("sign", ignoreCase = true) }.configureEach {
+				enabled = false
+			}
+			project.extensions.extraProperties["vanniktech.publish.signing.required"] = "false"
+		}
+	}
 }

@@ -11,7 +11,7 @@ import java.io.File
 
 /**
  * Gradle plugin for KProxyable.
- * Version 1.1.2: Stable cross-module discovery.
+ * Version 1.1.1: Automagic dependency injection and cross-module discovery.
  */
 class KProxyablePlugin : Plugin<Project> {
 	override fun apply(project: Project) {
@@ -45,28 +45,37 @@ class KProxyablePlugin : Plugin<Project> {
 			configureKmp(project, kotlin)
 		}
 
-        // Global KSP setup
-        project.extensions.configure(KspExtension::class.java) {
-            arg("kproxyable.moduleName", moduleName)
+		// Global KSP setup
+		project.extensions.configure(KspExtension::class.java) {
+			arg("kproxyable.moduleName", moduleName)
 
-            val classpathProvider = project.provider {
-                val files = mutableSetOf<File>()
-                val configNames = listOf(
-                    "jvmCompileClasspath", "debugCompileClasspath", "compileClasspath",
-                    "jsCompileClasspath", "wasmJsCompileClasspath",
-                    "kotlinTransitiveCompilePlaceholderJs", "kotlinTransitiveCompilePlaceholderWasmJs"
-                )
-                configNames.forEach { name ->
-                    project.configurations.findByName(name)?.let { config ->
-                        if (config.isCanBeResolved) {
-                            try { files.addAll(config.files) } catch (_: Exception) {}
+			val classpathProvider = project.provider {
+				val files = mutableSetOf<File>()
+				
+				// 1. All resolvable configurations (aggressive search for breadcrumbs)
+				project.configurations.all {
+					if (isCanBeResolved && (name.contains("CompileClasspath") || name.contains("RuntimeClasspath"))) {
+						try { files.addAll(this.files) } catch (_: Exception) {}
+					}
+				}
+
+				// 2. Local project resources (for incremental local builds)
+				project.configurations.all {
+                    if (isCanBeResolved) {
+                        incoming.dependencies.filterIsInstance<org.gradle.api.artifacts.ProjectDependency>().forEach { dep ->
+                            val depProject = dep.dependencyProject
+                            val resDir = depProject.layout.buildDirectory.dir("generated/ksp").get().asFile
+                            if (resDir.exists()) {
+                                resDir.walkTopDown().maxDepth(10).filter { it.name == "resources" }.forEach { files.add(it) }
+                            }
                         }
                     }
-                }
-                files.joinToString(File.pathSeparator) { it.absolutePath }
-            }
-            arg("kproxyable.classpath", classpathProvider)
-        }
+				}
+
+				files.joinToString(File.pathSeparator) { it.absolutePath }
+			}
+			arg("kproxyable.fullClasspath", classpathProvider)
+		}
 	}
 
 	private fun configureKmp(project: Project, kotlin: KotlinMultiplatformExtension) {
@@ -78,21 +87,41 @@ class KProxyablePlugin : Plugin<Project> {
 			if (platformType == KotlinPlatformType.common) return@configureEach
 			val targetName = this.name
 
+            // Automagic Processor Injection
+            val kspConfigName = if (targetName == "metadata") "kspCommonMainMetadata" else "ksp${targetName.replaceFirstChar { it.uppercase() }}"
+            project.dependencies.add(kspConfigName, project.kproxyDependency("processor"))
+
 			compilations.configureEach {
-                val compilationName = this.name
+				val compilationName = this.name
 				val isTest = compilationName == "test"
-                val kspTaskName = if (isTest) "kspTestKotlin${targetName.replaceFirstChar { it.uppercase() }}" 
-                                  else "kspKotlin${targetName.replaceFirstChar { it.uppercase() }}"
+				val kspTaskName = if (isTest) "kspTestKotlin${targetName.replaceFirstChar { it.uppercase() }}"
+				else "kspKotlin${targetName.replaceFirstChar { it.uppercase() }}"
+
+                if (isTest) {
+                    project.dependencies.add("ksp${targetName.replaceFirstChar { it.uppercase() }}Test", project.kproxyDependency("processor"))
+                }
 
 				val kspResourceDir = project.layout.buildDirectory.dir("generated/ksp/$targetName/$targetName${compilationName.replaceFirstChar { it.uppercase() }}/resources")
 				defaultSourceSet.resources.srcDir(kspResourceDir)
 
-                // Task Wiring: Ensure compilation and resources depend on KSP
-                val kspTask = project.tasks.matching { it.name == kspTaskName }
-                compileTaskProvider.configure { dependsOn(kspTask) }
-                
-                val processTaskName = "${targetName}${if (isTest) "Test" else ""}ProcessResources"
-                project.tasks.matching { it.name == processTaskName }.configureEach { dependsOn(kspTask) }
+				// Task Wiring
+				val kspTask = project.tasks.matching { it.name == kspTaskName }
+				compileTaskProvider.configure { dependsOn(kspTask) }
+				project.tasks.matching { it.name == "${targetName}${if (isTest) "Test" else ""}ProcessResources" }.configureEach { dependsOn(kspTask) }
+
+                // Argument Provider for isTest
+                project.tasks.matching { it.name == kspTaskName }.configureEach {
+                    try {
+                        val getProviders = this::class.java.getMethod("getCommandLineArgumentProviders")
+                        @Suppress("UNCHECKED_CAST")
+                        val providers = getProviders.invoke(this) as MutableList<Any>
+                        providers.add(object : org.gradle.process.CommandLineArgumentProvider {
+                            override fun asArguments() = listOf(
+                                "plugin:com.google.devtools.ksp.symbol-processing:kproxyable.isTest=$isTest"
+                            )
+                        })
+                    } catch (_: Exception) {}
+                }
 			}
 		}
 	}
@@ -100,8 +129,9 @@ class KProxyablePlugin : Plugin<Project> {
 	private fun Project.kproxyDependency(module: String): Any {
 		return try {
 			project.rootProject.project(":kproxyable-$module")
-		} catch (_: Exception) {
-			"io.github.elianfabian:kproxyable-$module:1.1.0"
+		}
+		catch (_: Exception) {
+			"io.github.elianfabian:kproxyable-$module:1.1.1"
 		}
 	}
 }

@@ -5,10 +5,6 @@ import com.elianfabian.kproxyable.PropertyDescriptor
 import com.elianfabian.kproxyable.ProxyHandler
 import kotlinx.coroutines.delay
 
-/**
- * A comprehensive ProxyHandler that demonstrates all capabilities of KProxyable.
- * Version 1.1.1: Robust type safety allows natural casting 'as Int'.
- */
 class DemoHandler : ProxyHandler {
 	private var activeState = false
 
@@ -32,7 +28,7 @@ class DemoHandler : ProxyHandler {
 	override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
 		println("▶ [onSuspendCall] ${function.name}(${args.joinToString()})")
 		if (function.name == "fetchDataAsync") {
-			delay(100) 
+			delay(100)
 			return listOf("Result for ${args[0]}", "Extra Data")
 		}
 		return null
@@ -50,7 +46,7 @@ class DemoHandler : ProxyHandler {
 	override fun onSetProperty(property: PropertyDescriptor, value: Any?) {
 		println("▶ [onSetProperty] '${property.name}' set to $value")
 		if (property.name == "isActive") {
-            // Natural Boolean cast works too!
+			// Natural Boolean cast works too!
 			activeState = value as Boolean
 		}
 	}

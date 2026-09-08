@@ -10,10 +10,14 @@ plugins {
 val metadataProps = Properties()
 val propsFile = rootProject.file("gradle.metadata.properties")
 if (propsFile.exists()) {
-    propsFile.inputStream().use { metadataProps.load(it) }
+	propsFile.inputStream().use { metadataProps.load(it) }
 }
-val kotlinVer = metadataProps.getProperty("kotlin") ?: "2.0.21"
-val kspVer = metadataProps.getProperty("ksp") ?: "2.0.21-1.0.28"
+
+// We compile the plugin against a stable BASELINE version.
+// This allows the plugin to be built in older Gradle environments,
+// while still supporting newer Kotlin versions in the projects it is applied to.
+val baselineKotlin = metadataProps.getProperty("plugin.baseline.kotlin") ?: "2.0.21"
+val baselineKsp = metadataProps.getProperty("plugin.baseline.ksp") ?: "2.0.21-1.0.28"
 
 repositories {
 	mavenCentral()
@@ -37,9 +41,8 @@ gradlePlugin {
 }
 
 dependencies {
-    // Explicitly align with the target Kotlin version being tested/used
-	implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVer")
-	implementation("com.google.devtools.ksp:symbol-processing-gradle-plugin:$kspVer")
+	compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:$baselineKotlin")
+	compileOnly("com.google.devtools.ksp:symbol-processing-gradle-plugin:$baselineKsp")
 }
 
 val generateBuildConstants by tasks.registering {

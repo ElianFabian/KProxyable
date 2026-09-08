@@ -20,5 +20,4 @@ kotlin {
 }
 
 dependencies {
-    add("kspJs", project(":kproxyable-processor"))
 }

@@ -43,16 +43,16 @@ kotlin {
 		val nonJvmMain by creating {
 			dependsOn(commonMain.get())
 		}
-		
+
 		jsMain.get().dependsOn(nonJvmMain)
 		wasmJsMain.get().dependsOn(nonJvmMain)
-		
-        // Link all native targets to nonJvmMain dynamically
-        targets.all {
-            if (platformType == KotlinPlatformType.native) {
-                compilations.getByName("main").defaultSourceSet.dependsOn(nonJvmMain)
-            }
-        }
+
+		// Link all native targets to nonJvmMain dynamically
+		targets.all {
+			if (platformType == KotlinPlatformType.native) {
+				compilations.getByName("main").defaultSourceSet.dependsOn(nonJvmMain)
+			}
+		}
 	}
 }
 

@@ -50,18 +50,3 @@ kotlin {
 		}
 	}
 }
-
-dependencies {
-	kotlin.targets.forEach { target ->
-		if (target.name != "metadata") {
-			val targetName = target.name.replaceFirstChar { it.uppercase() }
-			add("ksp$targetName", project(":kproxyable-processor"))
-			add("ksp${targetName}Test", project(":kproxyable-processor"))
-		}
-	}
-}
-
-// Only for development, to force KSP to run every time, even if nothing changed
-tasks.matching { it.name.startsWith("kspKotlin") }.configureEach {
-	outputs.upToDateWhen { false }
-}

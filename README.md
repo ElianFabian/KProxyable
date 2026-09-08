@@ -19,49 +19,55 @@ linkages at compile-time.
 - 🔍 **Any Method Interception**: Custom behavior for `equals`, `hashCode`, and `toString`.
 - 📦 **Cross-Module Discovery**: Automatically aggregates proxies from separate library modules into
   your main application.
+- 🚀 **Kotlin 2.x Lineage**: Fully compatible with Kotlin 2.0, 2.1, 2.2, and 2.4+.
 
 ---
 
 ## Installation
 
-### 1. Apply KSP and KProxyable Plugins
+### 1. Root Project Setup
 
-KProxyable requires the `kotlin("multiplatform")` plugin to be applied, even for single-target
-projects.
-
-In your root `build.gradle.kts`:
+KProxyable requires the `kotlin("multiplatform")` plugin to be applied. In your root `build.gradle.kts`:
 
 ```kotlin
 plugins {
-	// 1. Apply KSP matching your Kotlin version
-	id("com.google.devtools.ksp") version "2.0.21-1.0.28"
+    // Apply Kotlin Multiplatform and KSP
+    kotlin("multiplatform") version "2.0.21" apply false
+    id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
 
-	// 2. Apply KProxyable
-	id("io.github.elianfabian.kproxyable") version "1.1.1"
+    // Apply KProxyable
+    id("io.github.elianfabian.kproxyable") version "1.1.1" apply false
 }
 ```
 
-### 2. Single-Target Projects
+### 2. Module Setup (App or Library)
 
-If you are building an application that only targets one platform (e.g., JVM-only or JS-only), you
-must still use the multiplatform plugin to enable the `expect/actual` mechanism:
+In your module's `build.gradle.kts`:
 
 ```kotlin
-// build.gradle.kts
 plugins {
-	kotlin("multiplatform")
-	id("io.github.elianfabian.kproxyable")
+    kotlin("multiplatform")
+    id("com.google.devtools.ksp")
+    id("io.github.elianfabian.kproxyable")
 }
 
 kotlin {
-	jvm() // or js(IR), or androidTarget()
+    // Define your targets (JVM, JS, WasmJs, iOS, etc.)
+    jvm()
+    wasmJs { nodejs() }
 
-	sourceSets {
-		commonMain.dependencies {
-			// Your dependencies here
-		}
-	}
+    sourceSets {
+        commonMain.dependencies {
+            // runtime is added automatically by the plugin, 
+            // but you can add it explicitly if needed:
+            // implementation("io.github.elianfabian:kproxyable-runtime:1.1.1")
+        }
+    }
 }
+
+// Note: The KProxyable plugin automatically adds the symbol processor 
+// to all your KSP configurations. Manual 'dependencies { ksp(...) }' 
+// blocks are no longer required.
 ```
 
 ---
@@ -75,9 +81,9 @@ Annotate any `public` or `internal` interface with `@KProxyable`:
 ```kotlin
 @KProxyable
 interface MyService {
-	fun doSomething(id: Int): String
-	suspend fun fetchData(): List<String>
-	var isActive: Boolean
+    fun doSomething(id: Int): String
+    suspend fun fetchData(): List<String>
+    var isActive: Boolean
 }
 ```
 
@@ -96,34 +102,34 @@ expect object KProxy : KProxyFactory
 ```
 
 KProxyable will automatically generate the `actual` implementation in all your target source sets,
-linking all discovered proxies.
+linking all discovered proxies from the current module and all dependencies.
 
 ### 3. Implement a ProxyHandler
 
-The `ProxyHandler` intercepts all calls to the proxy instance. You must implement all its methods:
+The `ProxyHandler` intercepts all calls to the proxy instance:
 
 ```kotlin
 class MyHandler : ProxyHandler {
-	override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {
-		println("Calling ${function.name} with $args")
-		return "Intercepted result"
-	}
+    override fun onCall(function: FunctionDescriptor, args: List<Any?>): Any? {
+        println("Calling ${function.name} with $args")
+        return "Intercepted result"
+    }
 
-	override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
-		return listOf("Async", "Result")
-	}
+    override suspend fun onSuspendCall(function: FunctionDescriptor, args: List<Any?>): Any? {
+        return listOf("Async", "Result")
+    }
 
-	override fun onGetProperty(property: PropertyDescriptor): Any? {
-		return if (property.name == "isActive") true else null
-	}
+    override fun onGetProperty(property: PropertyDescriptor): Any? {
+        return if (property.name == "isActive") true else null
+    }
 
-	override fun onSetProperty(property: PropertyDescriptor, value: Any?) {
-		println("Setting ${property.name} to $value")
-	}
+    override fun onSetProperty(property: PropertyDescriptor, value: Any?) {
+        println("Setting ${property.name} to $value")
+    }
 
-	override fun onEquals(other: Any?): Boolean = this === other
-	override fun onHashCode(): Int = 42
-	override fun onToString(): String = "MyProxyHandler"
+    override fun onEquals(other: Any?): Boolean = this === other
+    override fun onHashCode(): Int = 42
+    override fun onToString(): String = "MyProxyHandler"
 }
 ```
 
@@ -132,24 +138,26 @@ class MyHandler : ProxyHandler {
 Use the `create` extension method on your registry:
 
 ```kotlin
+import com.elianfabian.kproxyable.create
+
 val service = KProxy.create<MyService>(MyHandler())
 ```
 
 ---
 
-## Advanced: JVM / Android Applications
+## Developer Matrix Testing
 
-When using the Gradle `application` plugin or building an Android APK, the standard "run" tasks
-might not automatically include KSP-generated classes in their classpath. You can fix this with a
-simple helper in your `build.gradle.kts`:
+To ensure the library remains stable across the rapidly evolving Kotlin 2.x ecosystem, we've included 
+automation scripts in the `scratch/` folder.
 
-```kotlin
-// help the application plugin find KMP/KSP outputs
-tasks.withType<JavaExec>().configureEach {
-	val jvmTarget =
-		kotlin.targets.getByName("jvm") as org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
-	classpath += jvmTarget.compilations.getByName("main").output.allOutputs
-}
+You can test a specific version:
+```powershell
+powershell -File scratch/run_matrix.ps1 -Version 2.1.0
+```
+
+Or run the full verified suite:
+```powershell
+powershell -File scratch/test_all_versions.ps1
 ```
 
 ---

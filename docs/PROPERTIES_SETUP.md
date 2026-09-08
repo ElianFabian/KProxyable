@@ -1,105 +1,61 @@
 # Gradle Properties Setup Guide
 
-This document explains how to configure the Gradle properties for the KProxyable project. To ensure
-security and maintainability, the project uses a dual-property file system.
+This document explains how to configure the properties for the KProxyable project.
 
 ## 🏗️ Architecture Overview
 
 The project splits configuration into two files:
 
-1. **`gradle.metadata.properties` (Public)**: Contains project identity, licensing, and developer
-   info. This file is **tracked by Git**.
-2. **`gradle.properties` (Private)**: Contains sensitive credentials, API keys, and GPG signing
-   details. This file is **ignored by Git** and should never be committed.
+1. **`gradle.metadata.properties` (Public)**: Project identity and version matrix. **Tracked by Git**.
+2. **`gradle.properties` (Private)**: Sensitive credentials. **Ignored by Git**.
 
 ---
 
 ## 🌍 Public Metadata (`gradle.metadata.properties`)
 
-This file defines the public face of the library. It is required for Maven Central compliance.
+This file defines the project's identity and its compatibility matrix.
 
-| Key               | Description                               | Example                                     |
-|:------------------|:------------------------------------------|:--------------------------------------------|
-| `group`           | The Maven group ID / namespace.           | `io.github.elianfabian`                     |
-| `version`         | The current stable version.               | `1.0.0`                                     |
-| `POM_NAME`        | Human-readable name of the project.       | `KProxyable`                                |
-| `POM_DESCRIPTION` | A brief summary of what the library does. | `Compile-time Dynamic Proxies...`           |
-| `POM_URL`         | The home page of the project.             | `https://github.com/ElianFabian/KProxyable` |
-| `POM_LICENCE_*`   | License type and official URL.            | `MIT License`                               |
-| `POM_SCM_*`       | Connection strings for version control.   | `scm:git:github.com/...`                    |
-| `POM_DEVELOPER_*` | ID, Name, and Email of the maintainer.    | `elianfabian`, `Elián Fabián`               |
+### Versioning
+
+| Key                      | Description                                                  |
+|:-------------------------|:-------------------------------------------------------------|
+| `version`                | The current stable version of KProxyable (e.g., `1.1.1`).    |
+| `kotlin`                 | The target Kotlin version used for library and samples.      |
+| `ksp`                    | The target KSP version used for library and samples.         |
+| `plugin.baseline.kotlin` | The stable version used to compile the Gradle Plugin itself. |
+| `plugin.baseline.ksp`    | The stable version used to compile the Gradle Plugin itself. |
+
+> [!NOTE]
+> The `plugin.baseline` versions ensure that the KProxyable Gradle Plugin can be built in older 
+> Gradle environments while still supporting newer Kotlin versions (like 2.4.x) in the projects 
+> it is applied to.
+
+### POM Metadata
+
+Standard keys like `group`, `POM_NAME`, `POM_URL`, and `POM_SCM_*` are used to generate the 
+Maven publications and must be kept accurate for Maven Central compliance.
 
 ---
 
 ## 🔐 Private Secrets (`gradle.properties`)
 
-This file contains the credentials required to push artifacts to external portals. **Keep this file
-secure.**
+This file contains the credentials required to push artifacts. **Keep this file secure.**
 
-### 📦 Maven Central (Sonatype)
-
-Required for the `publishAndReleaseToMavenCentral` task.
-
-- `mavenCentralUsername`: Your Sonatype Central Deployment Token username.
-- `mavenCentralPassword`: Your Sonatype Central Deployment Token password.
-
-### 🛠️ Gradle Plugin Portal
-
-Required for the `:kproxyable-gradle-plugin:publishPlugins` task.
-
-- `gradle.publish.key`: Your API Key from [plugins.gradle.org](https://plugins.gradle.org/).
-- `gradle.publish.secret`: Your API Secret.
-
-### ✍️ GPG Signing
-
-Required for all Maven Central publications.
-
-- `signing.keyId`: The last 8 characters of your public GPG key ID.
-- `signing.password`: The passphrase for your GPG key.
-- `signing.secretKeyRingFile`: The relative path to your exported secret key ring (e.g.,
-  `kproxyable.gpg`).
+- `mavenCentralUsername` / `Password`: Deployment tokens for Sonatype.
+- `gradle.publish.key` / `secret`: API keys for the Gradle Plugin Portal.
+- `signing.keyId` / `password`: GPG signing credentials.
 
 ---
 
-## 🔑 GPG Key Setup
+## 🚀 Version Matrix Testing
 
-To publish to Maven Central, your artifacts must be signed, and your public key must be available on
-a keyserver.
+KProxyable is verified across the Kotlin 2.x lineage. You can use the scripts in `scratch/` to 
+verify specific versions:
 
-1. **Generate a Key**:
-   ```bash
-   gpg --full-gen-key
-   ```
-2. **Find your Key ID**:
-   List your keys to find the one you just created:
-   ```bash
-   gpg --list-keys
-   ```
-3. **Upload to Keyserver**:
-   Maven Central requires your public key to be discoverable. Replace `$publicKey` with your ID:
-   ```bash
-   gpg --keyserver keyserver.ubuntu.com --send-keys $publicKey
-   ```
-4. **Export and Dearmor the Secret Key**:
-   Export your secret key and convert it to the binary format required by Gradle:
-   ```powershell
-   # Export the armored key to a variable
-   $privateKey = gpg --armor --export-secret-keys $publicKey
+```powershell
+# Test a specific version
+powershell -File scratch/run_matrix.ps1 -Version 2.2.0
 
-   # Dearmor it and write to the file (ensure this file is in .gitignore)
-   $privateKey | gpg --dearmor > kproxyable.gpg
-   ```
-
----
-
-## ⚙️ Technical Note: Included Build Isolation
-
-The `kproxyable-gradle-plugin` is an **included build**. In Gradle, these are isolated processes.
-
-To ensure the plugin can see these properties during its own publishing cycle, we have added manual
-loading logic in its `settings.gradle.kts`. This ensures that even though it is a separate build, it
-remains synchronized with your root project's credentials and versioning.
-
-> [!TIP]
-> If you add a new secret property that needs to be shared with the plugin, ensure it is handled in
-> the loading block of `kproxyable-gradle-plugin/settings.gradle.kts`.
+# Test all verified versions (2.0 - 2.4)
+powershell -File scratch/test_all_versions.ps1
+```

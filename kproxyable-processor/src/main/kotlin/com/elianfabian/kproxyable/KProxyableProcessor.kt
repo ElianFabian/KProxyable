@@ -23,7 +23,6 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
@@ -41,16 +40,16 @@ import kotlin.reflect.KClass
 
 /**
  * Truly Unified KMP Symbol Processor for KProxyable.
- * Version 1.1.6: Fixed object companion bug and refined cross-module discovery.
+ * Version 1.1.9: Robust cross-module discovery and platform safety.
  */
 public class KProxyableProcessor(
 	private val environment: SymbolProcessorEnvironment,
 ) : SymbolProcessor {
 
 	private val accumulatedInterfaceNames = mutableListOf<ClassName>()
-    private val accumulatedOriginatingFiles = mutableListOf<KSFile>()
+	private val accumulatedOriginatingFiles = mutableListOf<KSFile>()
 	private var registryClassName: ClassName? = null
-    private var registryOriginatingFile: KSFile? = null
+	private var registryOriginatingFile: KSFile? = null
 
 
 	override fun process(resolver: Resolver): List<KSAnnotated> {
@@ -62,7 +61,7 @@ public class KProxyableProcessor(
 			.filterIsInstance<KSClassDeclaration>()
 			.firstOrNull { it.classKind == ClassKind.OBJECT && it.isExpect }?.let {
 				registryClassName = it.toClassName()
-                registryOriginatingFile = it.containingFile
+				registryOriginatingFile = it.containingFile
 			}
 
 		// 2. Find interfaces
@@ -80,16 +79,14 @@ public class KProxyableProcessor(
 
 			generateProxyClass(classDeclaration)
 			accumulatedInterfaceNames.add(classDeclaration.toClassName())
-            classDeclaration.containingFile?.let { accumulatedOriginatingFiles.add(it) }
+			classDeclaration.containingFile?.let { accumulatedOriginatingFiles.add(it) }
 		}
 
 		return invalid
 	}
 
 	private fun getOption(key: String): String? {
-		return environment.options[key] ?: 
-               environment.options["plugin:com.google.devtools.ksp.symbol-processing:$key"] ?:
-               environment.options.entries.find { it.key.endsWith(".$key") }?.value
+		return environment.options[key] ?: environment.options["plugin:com.google.devtools.ksp.symbol-processing:$key"] ?: environment.options.entries.find { it.key.endsWith(".$key") }?.value
 	}
 
 	override fun finish() {
@@ -97,13 +94,11 @@ public class KProxyableProcessor(
 		val isTest = getOption("kproxyable.isTest") == "true"
 		val uniqueRegistryName = if (isTest) "KProxyRegistry_${moduleName}_Test" else "KProxyRegistry_$moduleName"
 
-		// 1. Generate local module registry
 		if (accumulatedInterfaceNames.isNotEmpty()) {
 			generateModuleRegistry(uniqueRegistryName, accumulatedInterfaceNames, accumulatedOriginatingFiles)
 			generateBreadcrumb(uniqueRegistryName, accumulatedOriginatingFiles)
 		}
 
-		// 2. Generate master linkage
 		registryClassName?.let {
 			generateCompositeActualRegistry(it, accumulatedInterfaceNames, accumulatedOriginatingFiles, registryOriginatingFile, moduleName, isTest)
 		}
@@ -113,9 +108,8 @@ public class KProxyableProcessor(
 		val packageName = "com.elianfabian.kproxyable.generated"
 		val findFunSpec = generateFindProxyFunction(interfaceNames)
 
-        // Module registries are simple OBJECTS. NO companion objects allowed.
 		val typeSpec = TypeSpec.objectBuilder(uniqueRegistryName)
-            .addModifiers(KModifier.PUBLIC)
+			.addModifiers(KModifier.PUBLIC)
 			.addSuperinterface(KProxyFactory::class.asTypeName())
 			.addFunction(findFunSpec)
 			.build()
@@ -135,7 +129,7 @@ public class KProxyableProcessor(
 	private fun discoverRegistries(currentUniqueName: String): Set<String> {
 		val discovered = mutableSetOf<String>()
 		val serviceFileName = "com.elianfabian.kproxyable.KProxyFactory"
-		
+
 		val classpathStr = getOption("kproxyable.fullClasspath") ?: getOption("kproxyable.classpath") ?: ""
 		val classpathItems = classpathStr.split(File.pathSeparator).filter { it.isNotBlank() }
 
@@ -143,19 +137,22 @@ public class KProxyableProcessor(
 			val file = File(item)
 			if (!file.exists()) return@forEach
 			if (file.isDirectory) {
-				file.walkTopDown().maxDepth(15).filter { it.isFile && it.name == serviceFileName }.forEach { 
-                    it.useLines { lines -> discovered.addAll(lines.map { l -> l.trim() }.filter { l -> l.isNotEmpty() && !l.startsWith("#") }) } 
-                }
-			} else if (file.extension == "jar" || file.extension == "klib") {
-				try { 
-                    ZipFile(file).use { zip -> 
-                        zip.entries().asSequence().filter { !it.isDirectory && (it.name.endsWith("/$serviceFileName") || it.name == serviceFileName) }.forEach { entry -> 
-                            zip.getInputStream(entry).bufferedReader().useLines { lines -> 
-                                discovered.addAll(lines.map { l -> l.trim() }.filter { l -> l.isNotEmpty() && !l.startsWith("#") }) 
-                            } 
-                        } 
-                    } 
-                } catch (_: Exception) {}
+				file.walkTopDown().maxDepth(15).filter { it.isFile && (it.name == serviceFileName || it.path.contains("META-INF/services/$serviceFileName")) }.forEach {
+					it.useLines { lines -> discovered.addAll(lines.map { l -> l.trim() }.filter { l -> l.isNotEmpty() && !l.startsWith("#") }) }
+				}
+			}
+			else if (file.extension == "jar" || file.extension == "klib") {
+				try {
+					ZipFile(file).use { zip ->
+						zip.entries().asSequence().filter { !it.isDirectory && (it.name.endsWith("/$serviceFileName") || it.name == serviceFileName) }.forEach { entry ->
+							zip.getInputStream(entry).bufferedReader().useLines { lines ->
+								discovered.addAll(lines.map { l -> l.trim() }.filter { l -> l.isNotEmpty() && !l.startsWith("#") })
+							}
+						}
+					}
+				}
+				catch (_: Exception) {
+				}
 			}
 		}
 		return discovered.filter { !it.endsWith(currentUniqueName) }.toSet()
@@ -163,29 +160,29 @@ public class KProxyableProcessor(
 
 	private fun generateCompositeActualRegistry(registryName: ClassName, interfaceNames: List<ClassName>, originatingFiles: List<KSFile>, registryOriginatingFile: KSFile?, moduleName: String, isTest: Boolean) {
 		val currentUniqueName = if (isTest) "KProxyRegistry_${moduleName}_Test" else "KProxyRegistry_$moduleName"
-        val discovered = discoverRegistries(currentUniqueName).toMutableSet()
-        
-        val localFqn = "com.elianfabian.kproxyable.generated.$currentUniqueName"
+		val discovered = discoverRegistries(currentUniqueName).toMutableSet()
+
+		val localFqn = "com.elianfabian.kproxyable.generated.$currentUniqueName"
 		if (interfaceNames.isNotEmpty()) discovered.add(localFqn)
-        
-        // Include main module if we are in tests
-        if (isTest) {
-            discovered.add("com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName")
-        }
+
+		if (isTest) {
+			discovered.add("com.elianfabian.kproxyable.generated.KProxyRegistry_$moduleName")
+		}
 
 		val codeBlock = CodeBlock.builder()
-        codeBlock.add("return ")
-        
-        val allRegistries = discovered.distinct().toList()
-        if (allRegistries.isEmpty()) {
-            codeBlock.addStatement("null")
-        } else {
-            allRegistries.forEachIndexed { i, fqn ->
-                codeBlock.add("%T.findProxy(handler, classifier)", ClassName.bestGuess(fqn))
-                if (i < allRegistries.size - 1) codeBlock.add("\n ?: ")
-            }
-            codeBlock.add("\n")
-        }
+		codeBlock.add("return ")
+
+		val allRegistries = discovered.distinct().toList()
+		if (allRegistries.isEmpty()) {
+			codeBlock.addStatement("null")
+		}
+		else {
+			allRegistries.forEachIndexed { i, fqn ->
+				codeBlock.add("%T.findProxy(handler, classifier)", ClassName.bestGuess(fqn))
+				if (i < allRegistries.size - 1) codeBlock.add("\n ?: ")
+			}
+			codeBlock.add("\n")
+		}
 
 		val actualObjectSpec = TypeSpec.objectBuilder(registryName.simpleName)
 			.addModifiers(KModifier.ACTUAL).addAnnotation(KProxyRegistry::class).addSuperinterface(KProxyFactory::class.asTypeName())
@@ -211,71 +208,70 @@ public class KProxyableProcessor(
 		val packageName = classDeclaration.packageName.asString()
 		val interfaceName = classDeclaration.simpleName.asString()
 		val proxyClassName = "_${interfaceName}Proxy"
-        val safeCastMember = MemberName("com.elianfabian.kproxyable", "kproxySafeCast")
 
-        val companionBuilder = TypeSpec.companionObjectBuilder()
+		val companionBuilder = TypeSpec.companionObjectBuilder()
 		classDeclaration.getDeclaredFunctions().forEach { companionBuilder.addProperty(PropertySpec.builder("_${it.simpleName.asString()}Descriptor", FunctionDescriptor::class.asTypeName().copy(nullable = true)).mutable(true).initializer("null").addModifiers(KModifier.PRIVATE).build()) }
 		classDeclaration.getDeclaredProperties().forEach { companionBuilder.addProperty(PropertySpec.builder("_${it.simpleName.asString()}Descriptor", PropertyDescriptor::class.asTypeName().copy(nullable = true)).mutable(true).initializer("null").addModifiers(KModifier.PRIVATE).build()) }
 
 		val proxyClassSpec = TypeSpec.classBuilder(proxyClassName).addSuperinterface(classDeclaration.toClassName())
 			.primaryConstructor(FunSpec.constructorBuilder().addParameter("handler", ProxyHandler::class.asTypeName()).build())
 			.addProperty(PropertySpec.builder("handler", ProxyHandler::class.asTypeName()).initializer("handler").addModifiers(KModifier.PRIVATE).build())
-            .addType(companionBuilder.build())
+			.addType(companionBuilder.build())
 			.apply {
 				classDeclaration.getDeclaredProperties().forEach { property ->
 					val name = property.simpleName.asString()
 					val type = property.type.toTypeName()
-                    val targetClassifier = (property.type.resolve().declaration as? KSClassDeclaration)?.toClassName() ?: ANY
 					val descriptorCode = CodeBlock.of("val descriptor = _${name}Descriptor ?: %L.also { _${name}Descriptor = it }", generatePropertyDescriptorInitializer(property))
-                    
-                    val getterBuilder = FunSpec.getterBuilder()
-                        .addCode(descriptorCode)
-                        .addCode("\n")
-                        .addStatement("return handler.onGetProperty(descriptor).%M(%T::class) as %T", safeCastMember, targetClassifier, type)
-					
+
+					val getterBuilder = FunSpec.getterBuilder().addCode(descriptorCode).addCode("\n")
+					getterBuilder.addStatement("return handler.onGetProperty(descriptor) as %T", type)
+
 					val propBuilder = PropertySpec.builder(name, type).addModifiers(KModifier.OVERRIDE).getter(getterBuilder.build())
-					
+
 					if (property.isMutable) {
-                        propBuilder.mutable(true)
-                        propBuilder.setter(FunSpec.setterBuilder().addParameter("v", type).addCode(descriptorCode).addCode("\n").addStatement("handler.onSetProperty(descriptor, v)").build())
-                    }
+						propBuilder.mutable(true)
+						propBuilder.setter(FunSpec.setterBuilder().addParameter("v", type).addCode(descriptorCode).addCode("\n").addStatement("handler.onSetProperty(descriptor, v)").build())
+					}
 					addProperty(propBuilder.build())
 				}
 				classDeclaration.getDeclaredFunctions().forEach { function ->
 					val name = function.simpleName.asString()
 					val returnType = function.returnType?.toTypeName() ?: UNIT
-                    val targetClassifier = (function.returnType?.resolve()?.declaration as? KSClassDeclaration)?.toClassName() ?: ANY
 					val parameters = function.parameters.map { ParameterSpec.builder(it.name!!.asString(), it.type.toTypeName()).build() }
 					val argsCall = function.parameters.joinToString(", ") { it.name!!.asString() }
 					val isSuspend = Modifier.SUSPEND in function.modifiers
-                    val descriptorCode = CodeBlock.of("val descriptor = _${name}Descriptor ?: %L.also { _${name}Descriptor = it }", generateFunctionDescriptorInitializer(function))
-                    
-                    val funBuilder = FunSpec.builder(name).addModifiers(if (isSuspend) listOf(KModifier.OVERRIDE, KModifier.SUSPEND) else listOf(KModifier.OVERRIDE)).returns(returnType).addParameters(parameters)
-                        .addCode(descriptorCode)
-                        .addCode("\n")
-                        .addStatement("return handler.${if (isSuspend) "onSuspendCall" else "onCall"}(descriptor, listOf(%L)).%M(%T::class) as %T", argsCall, safeCastMember, targetClassifier, returnType)
+					val descriptorCode = CodeBlock.of("val descriptor = _${name}Descriptor ?: %L.also { _${name}Descriptor = it }", generateFunctionDescriptorInitializer(function))
+
+					val funBuilder = FunSpec.builder(name).addModifiers(if (isSuspend) listOf(KModifier.OVERRIDE, KModifier.SUSPEND) else listOf(KModifier.OVERRIDE)).returns(returnType).addParameters(parameters)
+						.addCode(descriptorCode)
+						.addCode("\n")
 					
-                    addFunction(funBuilder.build())
+					val callMethod = if (isSuspend) "onSuspendCall" else "onCall"
+					funBuilder.addStatement("return handler.%L(descriptor, listOf(%L)) as %T", callMethod, argsCall, returnType)
+
+					addFunction(funBuilder.build())
 				}
 				addFunction(FunSpec.builder("equals").addModifiers(KModifier.OVERRIDE).addParameter("other", ANY.copy(nullable = true)).returns(Boolean::class).addStatement("return handler.onEquals(other)").build())
 				addFunction(FunSpec.builder("hashCode").addModifiers(KModifier.OVERRIDE).returns(Int::class).addStatement("return handler.onHashCode()").build())
 				addFunction(FunSpec.builder("toString").addModifiers(KModifier.OVERRIDE).returns(String::class).addStatement("return handler.onToString()").build())
 			}
-            .build()
+			.build()
 
-		FileSpec.builder(packageName, proxyClassName).addImport("com.elianfabian.kproxyable", "kproxySafeCast").addType(proxyClassSpec).build().writeTo(environment.codeGenerator, aggregating = false, originatingKSFiles = listOfNotNull(classDeclaration.containingFile))
+		FileSpec.builder(packageName, proxyClassName).addType(proxyClassSpec).build().writeTo(environment.codeGenerator, aggregating = false, originatingKSFiles = listOfNotNull(classDeclaration.containingFile))
 	}
 
 	private fun generatePropertyDescriptorInitializer(property: KSPropertyDeclaration): CodeBlock = CodeBlock.of("%T(name = %S, type = %L, isMutable = %L)", PropertyDescriptor::class.asTypeName(), property.simpleName.asString(), generateTypeDescriptorCode(property.type.resolve()), property.isMutable)
 	private fun generateFunctionDescriptorInitializer(function: KSFunctionDeclaration): CodeBlock {
-        val paramCodes = function.parameters.map { generateParameterDescriptorCode(it) }
-        val paramsList = if (paramCodes.isEmpty()) CodeBlock.of("emptyList()") else CodeBlock.builder().add("listOf(").apply { paramCodes.forEachIndexed { i, p -> add("%L", p); if (i < paramCodes.size - 1) add(", ") } }.add(")").build()
-        return CodeBlock.of("%T(name = %S, returnType = %L, parameters = %L)", FunctionDescriptor::class.asTypeName(), function.simpleName.asString(), function.returnType?.resolve()?.let { generateTypeDescriptorCode(it) } ?: CodeBlock.of("%T(classifier = %T::class)", TypeDescriptor::class.asTypeName(), UNIT), paramsList)
-    }
+		val paramCodes = function.parameters.map { generateParameterDescriptorCode(it) }
+		val paramsList = if (paramCodes.isEmpty()) CodeBlock.of("emptyList()") else CodeBlock.builder().add("listOf(").apply { paramCodes.forEachIndexed { i, p -> add("%L", p); if (i < paramCodes.size - 1) add(", ") } }.add(")").build()
+		return CodeBlock.of("%T(name = %S, returnType = %L, parameters = %L)", FunctionDescriptor::class.asTypeName(), function.simpleName.asString(), function.returnType?.resolve()?.let { generateTypeDescriptorCode(it) } ?: CodeBlock.of("%T(classifier = %T::class)", TypeDescriptor::class.asTypeName(), UNIT), paramsList)
+	}
+
 	private fun generateTypeDescriptorCode(ksType: KSType): CodeBlock {
-        val typeArgs = ksType.arguments.mapNotNull { it.type?.resolve()?.let { t -> generateTypeDescriptorCode(t) } }
-        val argsList = if (typeArgs.isEmpty()) CodeBlock.of("emptyList()") else CodeBlock.builder().add("listOf(").apply { typeArgs.forEachIndexed { i, a -> add("%L", a); if (i < typeArgs.size - 1) add(", ") } }.add(")").build()
-        return CodeBlock.of("%T(classifier = %T::class, isNullable = %L, typeArguments = %L)", TypeDescriptor::class.asTypeName(), (ksType.declaration as? KSClassDeclaration)?.toClassName() ?: ANY, ksType.isMarkedNullable, argsList)
-    }
+		val typeArgs = ksType.arguments.mapNotNull { it.type?.resolve()?.let { t -> generateTypeDescriptorCode(t) } }
+		val argsList = if (typeArgs.isEmpty()) CodeBlock.of("emptyList()") else CodeBlock.builder().add("listOf(").apply { typeArgs.forEachIndexed { i, a -> add("%L", a); if (i < typeArgs.size - 1) add(", ") } }.add(")").build()
+		return CodeBlock.of("%T(classifier = %T::class, isNullable = %L, typeArguments = %L)", TypeDescriptor::class.asTypeName(), (ksType.declaration as? KSClassDeclaration)?.toClassName() ?: ANY, ksType.isMarkedNullable, argsList)
+	}
+
 	private fun generateParameterDescriptorCode(param: KSValueParameter): CodeBlock = CodeBlock.of("%T(name = %S, type = %L, isVararg = %L, hasDefault = %L)", ParameterDescriptor::class.asTypeName(), param.name?.asString().orEmpty(), generateTypeDescriptorCode(param.type.resolve()), param.isVararg, param.hasDefault)
 }

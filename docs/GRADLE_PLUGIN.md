@@ -1,8 +1,7 @@
 # KProxyable: Gradle Plugin Architecture
 
 The `kproxyable-gradle-plugin` is the central orchestrator that automates the setup of KSP and
-dependencies across JVM, JS, and Multiplatform projects. This document details its internal
-mechanisms and logic.
+dependencies across Multiplatform projects. This document details its internal mechanisms.
 
 ---
 
@@ -11,84 +10,73 @@ mechanisms and logic.
 The plugin manages the following aspects of a project:
 
 1. **Plugin Orchestration**: Automatically applies `com.google.devtools.ksp`.
-2. **Dependency Injection**: Adds `kproxyable-runtime` to the project's source sets and
-   `kproxyable-processor` to the KSP configurations.
-3. **KSP Configuration**: Passes critical metadata to the processor via compiler arguments.
-4. **Klib Support**: Fixes resource bundling for JS and Wasm targets.
+2. **Automagic Dependency Injection**: 
+    - Adds `kproxyable-runtime` to `commonMain` and `commonTest`.
+    - Automatically adds `kproxyable-processor` to **all** relevant KSP configurations 
+      (e.g., `kspJvm`, `kspJs`, `kspIosArm64`, etc.). Manual dependency blocks are no longer required.
+3. **KSP Configuration**: Automatically configures KSP for every target (Jvm, Js, WasmJs, Native).
+4. **Task Wiring**: Ensures correct execution order between KSP and compilation tasks.
 
 ---
 
-## 2. Dynamic Target Configuration
+## 2. Version Baseline Strategy
 
-The plugin is "reactive" and adapts its behavior based on which other Kotlin plugins are applied to
-the project.
+To ensure KProxyable is compatible with the entire Kotlin 2.x lineage (from 2.0.0 to 2.4.x), the
+plugin uses a **Baseline Strategy**:
 
-### Kotlin Multiplatform (KMP)
-
-If `org.jetbrains.kotlin.multiplatform` is detected:
-
-- Adds `kproxyable-runtime` to `commonMain`.
-- Configures KSP for **every target** (e.g., `kspJvm`, `kspJs`, `kspLinuxX64`).
-- Handles the special `metadata` compilation for cross-platform symbol resolution.
-
-### JVM-Only and JS-Only Projects
-
-If a project is platform-specific (non-KMP):
-
-- Simplifies dependency setup using standard `implementation` and `ksp` configurations.
-- Handles target-specific KSP task naming (e.g., `kspKotlinJs`).
+- **Compilation Baseline**: The plugin itself is compiled against a stable baseline (Kotlin 2.0.21).
+  This prevents "Metadata Version Mismatch" errors when applied to projects using much newer or
+  experimental Kotlin versions.
+- **Runtime Flexibility**: Since the plugin communicates with KSP via generic providers and
+  command-line arguments, it remains compatible with newer KSP2 versioning schemes automatically.
 
 ---
 
-## 3. Advanced Mechanisms
+## 3. Truly Unified Setup
 
-### Application Detection (`isApp`)
+Unlike older versions that had separate logic for "Apps" and "Libraries," the current plugin
+implements a **Truly Unified** model:
 
-To avoid duplicate Master Registries, the plugin must identify which module is the "final" project.
+- Every module defines its own local registry.
+- Every module with an `expect object KProxy` receives an `actual` implementation that
+  statically links all discovered dependencies.
 
-- **Method**: Uses a lazy `Provider` and reflection to check for:
-    - Android Application, Gradle Application, or Kotlin/JVM Application plugins.
-    - **JS/KMP Executables**: Scans the Kotlin extension's targets and binaries for any defined
-      `Executable`.
-- **Impact**: Sets the `kproxyable.isApp` KSP argument, which tells the processor to generate the
-  `KProxyJvmImpl` or `KProxyJsImpl` entry points.
+### Lazy Classpath Injection
 
-### Lazy Classpath Resolution
+The processor needs to know the full classpath to find "breadcrumb" files in dependencies.
 
-The processor needs a list of all dependencies to scan for "breadcrumbs" (metadata files).
-
-- **The Problem**: Resolving the classpath during Gradle's configuration phase causes "Configuration
-  already resolved" errors.
 - **The Solution**: Uses a `project.provider` to lazily resolve the paths only during task
-  execution. It intelligently scans relevant configurations like `jsCompileClasspath`,
-  `jvmCompileClasspath`, and transitive placeholders.
+  execution. This avoids "Configuration already resolved" errors during the Gradle configuration
+  phase.
+- **Argument**: Passed via `kproxyable.fullClasspath`.
 
-### Klib Resource Bundle Fix (JS/Wasm)
+---
 
-In Kotlin/JS, KSP-generated resources (like `META-INF/services`) are often missed by the default
-packaging tasks.
+## 4. Web Resource Handling (JS/WasmJs)
+
+In web targets, KSP-generated resources (like `META-INF/services`) are often missed by default.
 
 - **The Fix**:
     1. Locates the target-specific KSP resource output folder.
     2. Adds it as a source directory to the compilation's resources.
     3. Configures `ProcessResources` and `compileKotlin` tasks to explicitly depend on the
-       corresponding KSP task.
+       corresponding KSP task to ensure resources are generated before bundling.
 
 ---
 
-## 4. KSP Compiler Arguments
+## 5. KSP Compiler Arguments
 
-| Argument                | Value Type       | Description                                                       |
-|:------------------------|:-----------------|:------------------------------------------------------------------|
-| `kproxyable.moduleName` | String           | A sanitized, unique identifier for the module's registry.         |
-| `kproxyable.isApp`      | Boolean (String) | Triggers the generation of the platform Master Registry.          |
-| `kproxyable.classpath`  | String           | Path-separated list of all dependencies for breadcrumb discovery. |
+| Argument                | Value Type | Description                                                       |
+|:------------------------|:-----------|:------------------------------------------------------------------|
+| `kproxyable.moduleName` | String     | A sanitized, unique identifier for the module's registry.         |
+| `kproxyable.isTest`     | Boolean    | Flags if we are generating for a Test source set.                 |
+| `kproxyable.fullClasspath` | String  | Path-separated list of all dependencies for breadcrumb discovery. |
 
 ---
 
-## 5. Development Mode
+## 6. Development Mode
 
 The plugin includes logic to detect if it is running within the KProxyable repository itself.
 
 - **Internal**: Uses `project(":kproxyable-...")` for immediate compilation feedback.
-- **External**: Resolves dependencies using the project's group and version for published consumers.
+- **External**: Resolves dependencies using the published group and version for consumers.

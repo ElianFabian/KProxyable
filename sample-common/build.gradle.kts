@@ -40,13 +40,3 @@ kotlin {
 		}
 	}
 }
-
-dependencies {
-	kotlin.targets.forEach { target ->
-		if (target.name != "metadata") {
-			val targetName = target.name.replaceFirstChar { it.uppercase() }
-			add("ksp$targetName", project(":kproxyable-processor"))
-			add("ksp${targetName}Test", project(":kproxyable-processor"))
-		}
-	}
-}
