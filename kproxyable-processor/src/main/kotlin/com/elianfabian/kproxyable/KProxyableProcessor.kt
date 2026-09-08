@@ -40,7 +40,7 @@ import kotlin.reflect.KClass
 
 /**
  * Truly Unified KMP Symbol Processor for KProxyable.
- * Version 1.1.9: Robust cross-module discovery and platform safety.
+ * Version 1.1.4: Robust discovery using classpathFile strategy.
  */
 public class KProxyableProcessor(
 	private val environment: SymbolProcessorEnvironment,
@@ -86,7 +86,7 @@ public class KProxyableProcessor(
 	}
 
 	private fun getOption(key: String): String? {
-		return environment.options[key] ?: environment.options["plugin:com.google.devtools.ksp.symbol-processing:$key"] ?: environment.options.entries.find { it.key.endsWith(".$key") }?.value
+		return environment.options[key] ?: environment.options.entries.find { it.key.endsWith(".$key") }?.value
 	}
 
 	override fun finish() {
@@ -130,8 +130,15 @@ public class KProxyableProcessor(
 		val discovered = mutableSetOf<String>()
 		val serviceFileName = "com.elianfabian.kproxyable.KProxyFactory"
 
+		// Support both direct classpath string and a pointer to a classpath file
 		val classpathStr = getOption("kproxyable.fullClasspath") ?: getOption("kproxyable.classpath") ?: ""
-		val classpathItems = classpathStr.split(File.pathSeparator).filter { it.isNotBlank() }
+        val classpathFile = getOption("kproxyable.classpathFile")?.let { File(it) }
+        
+		val classpathItems = if (classpathFile?.exists() == true) {
+            classpathFile.readText().split(File.pathSeparator)
+        } else {
+            classpathStr.split(File.pathSeparator)
+        }.filter { it.isNotBlank() }
 
 		classpathItems.forEach { item ->
 			val file = File(item)

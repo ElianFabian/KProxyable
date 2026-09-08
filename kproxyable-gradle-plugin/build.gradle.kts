@@ -77,4 +77,9 @@ kotlin {
 	sourceSets.main {
 		kotlin.srcDir(generateBuildConstants)
 	}
+    compilerOptions {
+        // Essential for the matrix to work: allows the stable baseline compiler 
+        // to talk to future KSP versions without metadata version clashes.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
+    }
 }

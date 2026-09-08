@@ -4,11 +4,16 @@ import com.google.devtools.ksp.gradle.KspExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.AbstractCopyTask
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import java.io.File
 
+/**
+ * Gradle plugin for KProxyable.
+ * Version 1.1.4: Smart Lazy discovery compatible with the entire Kotlin 2.x lineage.
+ */
 class KProxyablePlugin : Plugin<Project> {
 	override fun apply(project: Project) {
 		project.plugins.withId("com.google.devtools.ksp") {
@@ -19,7 +24,6 @@ class KProxyablePlugin : Plugin<Project> {
 	private fun configurePlugin(project: Project) {
 		val moduleName = project.path.split(":", "-").filter { it.isNotEmpty() }.joinToString("_").ifEmpty { "root" }
 
-		// KProxyable strictly requires the Kotlin Multiplatform plugin to enable expect/actual linkage.
 		project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
 			val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
 
@@ -43,35 +47,41 @@ class KProxyablePlugin : Plugin<Project> {
 		}
 
 		// Global KSP setup
-		project.extensions.configure(KspExtension::class.java) {
-			arg("kproxyable.moduleName", moduleName)
+		val extension = project.extensions.getByType(KspExtension::class.java)
+		extension.arg("kproxyable.moduleName", moduleName)
 
-			val classpathProvider = project.provider {
-				val files = mutableSetOf<File>()
-				
-				// 1. All resolvable configurations (aggressive search for breadcrumbs)
-				project.configurations.all {
-					if (isCanBeResolved && (name.contains("CompileClasspath") || name.contains("RuntimeClasspath"))) {
-						try { files.addAll(this.files) } catch (_: Exception) {}
-					}
-				}
-
-				// 2. Local project resources (for incremental local builds)
-				project.configurations.all {
-                    if (isCanBeResolved) {
-                        incoming.dependencies.filterIsInstance<org.gradle.api.artifacts.ProjectDependency>().forEach { dep ->
-                            val depProject = dep.dependencyProject
-                            val resDir = depProject.layout.buildDirectory.dir("generated/ksp").get().asFile
-                            if (resDir.exists()) {
-                                resDir.walkTopDown().maxDepth(10).filter { it.name == "resources" }.forEach { files.add(it) }
-                            }
-                        }
-                    }
-				}
-
-				files.joinToString(File.pathSeparator) { it.absolutePath }
+		// Calculate the classpath lazily
+		val classpathProvider = project.provider {
+			val files = mutableSetOf<File>()
+			val targetConfigs = project.configurations.filter { 
+				val n = it.name.lowercase()
+				it.isCanBeResolved && (n.contains("compileclasspath") || n.contains("runtimeclasspath")) && !n.contains("metadata")
 			}
-			arg("kproxyable.fullClasspath", classpathProvider)
+			
+			targetConfigs.forEach { config ->
+				try { files.addAll(config.files) } catch (_: Exception) {}
+				try {
+					config.incoming.dependencies.filterIsInstance<org.gradle.api.artifacts.ProjectDependency>().forEach { dep ->
+						val depProject = dep.dependencyProject
+						val resDir = depProject.layout.buildDirectory.dir("generated/ksp").get().asFile
+						if (resDir.exists()) {
+							resDir.walkTopDown().maxDepth(10).filter { it.name == "resources" }.forEach { files.add(it) }
+						}
+					}
+				} catch (_: Exception) {}
+			}
+			files.joinToString(File.pathSeparator) { it.absolutePath }
+		}
+
+		// Use Reflection to try the modern Provider-based API (KSP 1.0.22+)
+		// Fall back to eager calculation in afterEvaluate for older KSP (like 2.0.0)
+		try {
+			val argMethod = extension.javaClass.getMethod("arg", String::class.java, Provider::class.java)
+			argMethod.invoke(extension, "kproxyable.fullClasspath", classpathProvider)
+		} catch (_: Exception) {
+			project.afterEvaluate {
+				extension.arg("kproxyable.fullClasspath", classpathProvider.get())
+			}
 		}
 	}
 
@@ -84,7 +94,6 @@ class KProxyablePlugin : Plugin<Project> {
 			if (platformType == KotlinPlatformType.common) return@configureEach
 			val targetName = this.name
 
-            // Automagic Processor Injection
             val kspConfigName = if (targetName == "metadata") "kspCommonMainMetadata" else "ksp${targetName.replaceFirstChar { it.uppercase() }}"
             project.dependencies.add(kspConfigName, project.kproxyDependency("processor"))
 
@@ -108,18 +117,9 @@ class KProxyablePlugin : Plugin<Project> {
                 }
 				project.tasks.matching { it.name == "${targetName}${if (isTest) "Test" else ""}ProcessResources" }.configureEach { dependsOn(kspTask) }
 
-                // Argument Provider for isTest
-                project.tasks.matching { it.name == kspTaskName }.configureEach {
-                    try {
-                        val getProviders = this::class.java.getMethod("getCommandLineArgumentProviders")
-                        @Suppress("UNCHECKED_CAST")
-                        val providers = getProviders.invoke(this) as MutableList<Any>
-                        providers.add(object : org.gradle.process.CommandLineArgumentProvider {
-                            override fun asArguments() = listOf(
-                                "plugin:com.google.devtools.ksp.symbol-processing:kproxyable.isTest=$isTest"
-                            )
-                        })
-                    } catch (_: Exception) {}
+                // Pass test info
+                project.extensions.configure(KspExtension::class.java) {
+                    arg("kproxyable.isTest.$kspTaskName", isTest.toString())
                 }
 			}
 		}
