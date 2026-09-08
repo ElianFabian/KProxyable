@@ -1,10 +1,19 @@
+import java.util.Properties
+
 plugins {
 	`kotlin-dsl`
 	`java-gradle-plugin`
 	id("com.gradle.plugin-publish") version "2.0.0"
 }
 
-// Metadata is automatically injected from gradle.properties
+// Load metadata to align versions
+val metadataProps = Properties()
+val propsFile = rootProject.file("gradle.metadata.properties")
+if (propsFile.exists()) {
+    propsFile.inputStream().use { metadataProps.load(it) }
+}
+val kotlinVer = metadataProps.getProperty("kotlin") ?: "2.0.21"
+val kspVer = metadataProps.getProperty("ksp") ?: "2.0.21-1.0.28"
 
 repositories {
 	mavenCentral()
@@ -28,11 +37,11 @@ gradlePlugin {
 }
 
 dependencies {
-	implementation(libs.kotlin.gradlePlugin)
-	implementation(libs.ksp.gradlePlugin)
+    // Explicitly align with the target Kotlin version being tested/used
+	implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVer")
+	implementation("com.google.devtools.ksp:symbol-processing-gradle-plugin:$kspVer")
 }
 
-// Generate a BuildConstants file to avoid hardcoding version and group in the plugin code
 val generateBuildConstants by tasks.registering {
 	val outputDir = layout.buildDirectory.dir("generated/sources/buildConstants/kotlin")
 	inputs.property("group", project.group)

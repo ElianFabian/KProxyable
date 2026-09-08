@@ -2,7 +2,15 @@ plugins {
 	alias(libs.plugins.kotlin.jvm) apply false
 	alias(libs.plugins.kotlin.multiplatform) apply false
 	alias(libs.plugins.ksp) apply false
-	id("com.vanniktech.maven.publish") version "0.30.0" apply false
+	alias(libs.plugins.maven.publish) apply false
+}
+
+rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
+    rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().apply {
+        yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.NONE
+        reportNewYarnLock = false
+        yarnLockAutoReplace = true
+    }
 }
 
 allprojects {
@@ -12,7 +20,6 @@ allprojects {
 	}
 
 	// GLOBAL SIGNING CONFIGURATION
-	// Ensures that ALL publications (Libraries + Plugin Markers) can find the GPG keys.
 	plugins.withType<SigningPlugin> {
 		configure<SigningExtension> {
 			val keyId = (project.findProperty("signing.keyId") ?: project.findProperty("signingInMemoryKeyId")) as String?
@@ -22,26 +29,12 @@ allprojects {
 			if (keyId != null && password != null && secretKey != null) {
 				useInMemoryPgpKeys(keyId, secretKey, password)
 			}
-
-			// Auto-resolve relative GPG file path for local development
-			if (project.hasProperty("signing.secretKeyRingFile")) {
-				val gpgFile = project.property("signing.secretKeyRingFile") as String
-				if (!gpgFile.startsWith("/") && !gpgFile.contains(":\\")) {
-					val resolved = rootProject.file(gpgFile)
-					if (resolved.exists()) {
-						project.extensions.extraProperties["signing.secretKeyRingFile"] = resolved.absolutePath
-					}
-				}
-			}
 		}
 	}
 
-	// Authoritatively link signing to the publishing plugin
 	plugins.withId("com.vanniktech.maven.publish") {
 		val isSnapshot = project.version.toString().endsWith("SNAPSHOT")
 		if (!isSnapshot) {
-			// Using the string name of the extension to avoid "The value for this property is final"
-			// errors caused by re-configuring SonatypeHost/Coordinates.
 			val mavenPublishing = project.extensions.getByName("mavenPublishing")
 			try {
 				mavenPublishing::class.java.getMethod("signAllPublications").invoke(mavenPublishing)
@@ -50,4 +43,16 @@ allprojects {
 			}
 		}
 	}
+}
+
+// ARROGANTLY DISABLE SIGNING IN MATRIX MODE
+allprojects {
+    afterEvaluate {
+        if (rootProject.findProperty("kproxyable.matrix") == "true") {
+            tasks.matching { it.name.contains("sign", ignoreCase = true) }.configureEach {
+                enabled = false
+            }
+            project.extensions.extraProperties["vanniktech.publish.signing.required"] = "false"
+        }
+    }
 }

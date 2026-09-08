@@ -1,6 +1,6 @@
 plugins {
-	alias(libs.plugins.kotlin.jvm)
-	alias(libs.plugins.ksp)
+	id("org.jetbrains.kotlin.jvm")
+	id("com.google.devtools.ksp")
 	id("com.vanniktech.maven.publish")
 }
 

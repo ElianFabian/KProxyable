@@ -1,12 +1,15 @@
 plugins {
-	alias(libs.plugins.kotlin.multiplatform)
-	alias(libs.plugins.ksp)
+	id("org.jetbrains.kotlin.multiplatform")
+	id("com.google.devtools.ksp")
 	id("io.github.elianfabian.kproxyable")
-	application
 }
 
 kotlin {
-	jvm()
+	jvm {
+		mainRun {
+			mainClass.set("com.elianfabian.kproxyable.sample.MainKt")
+		}
+	}
 	sourceSets {
 		val commonMain by getting {
 			dependencies {
@@ -17,13 +20,28 @@ kotlin {
 	}
 }
 
-application {
-	mainClass.set("com.elianfabian.kproxyable.sample.MainKt")
+dependencies {
+	kotlin.targets.forEach { target ->
+		if (target.name != "metadata") {
+			val targetName = target.name.replaceFirstChar { it.uppercase() }
+			add("ksp$targetName", project(":kproxyable-processor"))
+			add("ksp${targetName}Test", project(":kproxyable-processor"))
+		}
+	}
 }
 
-// Ensure the application 'run' task includes all KMP dependencies and KSP outputs
+ksp {
+    arg("kproxyable.linkModules", "sample_common")
+}
+
+// In some Kotlin versions, project dependencies in jvmRun don't include generated resources automatically
 tasks.withType<JavaExec>().configureEach {
-	val jvm = kotlin.targets.getByName("jvm") as org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
-	classpath = jvm.compilations.getByName("main").output.allOutputs +
-		project.configurations.getByName("jvmRuntimeClasspath")
+    if (name == "jvmRun") {
+        val commonProject = project(":sample-common")
+        dependsOn(commonProject.tasks.matching { it.name.startsWith("kspKotlinJvm") })
+        
+        // Add generated resources directory of common project
+        val commonGeneratedResources = commonProject.layout.buildDirectory.dir("generated/ksp/jvm/jvmMain/resources")
+        classpath += commonProject.files(commonGeneratedResources)
+    }
 }

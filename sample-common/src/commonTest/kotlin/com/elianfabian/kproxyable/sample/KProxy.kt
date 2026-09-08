@@ -14,12 +14,12 @@ interface MyTestService {
 
 @KProxyRegistry
 @Suppress("KotlinNoActualForExpect")
-expect object TestProxy : KProxyFactory
+expect object KProxy : KProxyFactory
 
 class ProxyTest {
 	@Test
 	fun testProxyGeneration() {
-		val service = TestProxy.create<MyTestService>(DemoHandler())
+		val service = KProxy.create<MyTestService>(DemoHandler())
 		val result = service.greet("World")
 		assertEquals("Hello from DemoHandler, World", result)
 	}

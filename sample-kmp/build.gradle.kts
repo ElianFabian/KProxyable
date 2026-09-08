@@ -1,6 +1,6 @@
 plugins {
-	alias(libs.plugins.kotlin.multiplatform)
-	alias(libs.plugins.ksp)
+	id("org.jetbrains.kotlin.multiplatform")
+	id("com.google.devtools.ksp")
 	id("io.github.elianfabian.kproxyable")
 }
 
@@ -10,7 +10,6 @@ kotlin {
 	}
 
 	jvm {
-		withJava()
 		mainRun {
 			mainClass.set("com.elianfabian.kproxyable.sample.MainKt")
 		}
@@ -45,6 +44,19 @@ kotlin {
 		commonMain.dependencies {
 			implementation(project(":sample-common"))
 			implementation(libs.kotlinx.coroutines.core)
+		}
+		commonTest.dependencies {
+			implementation(kotlin("test"))
+		}
+	}
+}
+
+dependencies {
+	kotlin.targets.forEach { target ->
+		if (target.name != "metadata") {
+			val targetName = target.name.replaceFirstChar { it.uppercase() }
+			add("ksp$targetName", project(":kproxyable-processor"))
+			add("ksp${targetName}Test", project(":kproxyable-processor"))
 		}
 	}
 }

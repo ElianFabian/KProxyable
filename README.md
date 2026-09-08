@@ -37,7 +37,7 @@ plugins {
 	id("com.google.devtools.ksp") version "2.0.21-1.0.28"
 
 	// 2. Apply KProxyable
-	id("io.github.elianfabian.kproxyable") version "1.1.0"
+	id("io.github.elianfabian.kproxyable") version "1.1.1"
 }
 ```
 

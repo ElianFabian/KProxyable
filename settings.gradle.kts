@@ -1,24 +1,11 @@
 pluginManagement {
-	// Load Metadata (Public) - custom file name requires manual loading
-	val metadataPropsFile = file("gradle.metadata.properties")
-	if (metadataPropsFile.exists()) {
-		val metadataProps = java.util.Properties()
-		metadataPropsFile.inputStream().use { metadataProps.load(it) }
-		metadataProps.forEach { key, value ->
-			settings.extensions.extraProperties[key as String] = value
-		}
-	}
-
 	includeBuild("kproxyable-gradle-plugin")
 	repositories {
 		mavenLocal()
 		google()
-		gradlePluginPortal()
 		mavenCentral()
+		gradlePluginPortal()
 	}
-}
-plugins {
-	id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
 dependencyResolutionManagement {
@@ -31,28 +18,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "KProxyable"
 
-include(":kproxyable-runtime")
 include(":kproxyable-processor")
+include(":kproxyable-runtime")
 include(":sample-common")
-include(":sample-kmp")
 include(":sample-jvm")
 include(":sample-js")
 include(":sample-wasmjs")
-
-// Authoritative injection of metadata into every project
-gradle.beforeProject {
-	val metadataPropsFile = rootProject.file("gradle.metadata.properties")
-	if (metadataPropsFile.exists()) {
-		val metadataProps = java.util.Properties()
-		metadataPropsFile.inputStream().use { metadataProps.load(it) }
-		metadataProps.forEach { (key, value) ->
-			val keyStr = key as String
-			val valStr = value as String
-
-			if (keyStr == "group") project.group = valStr
-			if (keyStr == "version") project.version = valStr
-
-			project.extensions.extraProperties[keyStr] = valStr
-		}
-	}
-}
+include(":sample-kmp")
