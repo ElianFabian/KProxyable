@@ -21,6 +21,9 @@ rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlu
 }
 
 allprojects {
+	group = metadataProps.getProperty("group") ?: "io.github.elianfabian"
+	version = metadataProps.getProperty("version") ?: "1.1.3"
+
 	repositories {
 		mavenCentral()
 		google()

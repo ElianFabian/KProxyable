@@ -16,6 +16,9 @@ if (propsFile.exists()) {
     fallbackPropsFile.inputStream().use { metadataProps.load(it) }
 }
 
+group = metadataProps.getProperty("group") ?: "io.github.elianfabian"
+version = metadataProps.getProperty("version") ?: "1.1.1"
+
 // We compile the plugin against a stable BASELINE version.
 // This allows the plugin to be built in older Gradle environments,
 // while still supporting newer Kotlin versions in the projects it is applied to.
