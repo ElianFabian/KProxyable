@@ -9,8 +9,11 @@ plugins {
 // Load metadata to align versions
 val metadataProps = Properties()
 val propsFile = rootProject.file("gradle.metadata.properties")
+val fallbackPropsFile = rootProject.file("../gradle.metadata.properties")
 if (propsFile.exists()) {
 	propsFile.inputStream().use { metadataProps.load(it) }
+} else if (fallbackPropsFile.exists()) {
+    fallbackPropsFile.inputStream().use { metadataProps.load(it) }
 }
 
 // We compile the plugin against a stable BASELINE version.

@@ -48,7 +48,7 @@ The processor needs to know the full classpath to find "breadcrumb" files in dep
 - **The Solution**: Uses a `project.provider` to lazily resolve the paths only during task
   execution. This avoids "Configuration already resolved" errors during the Gradle configuration
   phase.
-- **Argument**: Passed via `kproxyable.fullClasspath`.
+- **Argument**: Passed via `kproxyable.classpath`.
 
 ---
 
@@ -70,7 +70,7 @@ In web targets, KSP-generated resources (like `META-INF/services`) are often mis
 |:------------------------|:-----------|:------------------------------------------------------------------|
 | `kproxyable.moduleName` | String     | A sanitized, unique identifier for the module's registry.         |
 | `kproxyable.isTest`     | Boolean    | Flags if we are generating for a Test source set.                 |
-| `kproxyable.fullClasspath` | String  | Path-separated list of all dependencies for breadcrumb discovery. |
+| `kproxyable.classpath`  | String     | Path-separated list of all dependencies for breadcrumb discovery. |
 
 ---
 

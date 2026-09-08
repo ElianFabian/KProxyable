@@ -25,25 +25,26 @@ linkages at compile-time.
 
 ## Installation
 
-### 1. Root Project Setup
+### 1. Apply Plugins
 
-KProxyable requires the `kotlin("multiplatform")` plugin to be applied. In your root `build.gradle.kts`:
+KProxyable requires the KSP plugin. In your root `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    // Apply Kotlin Multiplatform and KSP
-    kotlin("multiplatform") version "2.0.21" apply false
+    // 1. Apply KSP matching your Kotlin version
     id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
 
-    // Apply KProxyable
+    // 2. Apply KProxyable
     id("io.github.elianfabian.kproxyable") version "1.1.1" apply false
 }
 ```
 
 ### 2. Module Setup (App or Library)
 
-In your module's `build.gradle.kts`:
+The plugin works **automagically** for Multiplatform, Pure JVM, and Pure JS projects. 
+Manual dependency blocks for the processor or runtime are no longer required.
 
+#### For Multiplatform Projects
 ```kotlin
 plugins {
     kotlin("multiplatform")
@@ -52,22 +53,19 @@ plugins {
 }
 
 kotlin {
-    // Define your targets (JVM, JS, WasmJs, iOS, etc.)
     jvm()
-    wasmJs { nodejs() }
-
-    sourceSets {
-        commonMain.dependencies {
-            // runtime is added automatically by the plugin, 
-            // but you can add it explicitly if needed:
-            // implementation("io.github.elianfabian:kproxyable-runtime:1.1.1")
-        }
-    }
+    iosArm64()
+    // ... other targets
 }
+```
 
-// Note: The KProxyable plugin automatically adds the symbol processor 
-// to all your KSP configurations. Manual 'dependencies { ksp(...) }' 
-// blocks are no longer required.
+#### For Pure JVM Projects
+```kotlin
+plugins {
+    kotlin("jvm")
+    id("com.google.devtools.ksp")
+    id("io.github.elianfabian.kproxyable")
+}
 ```
 
 ---

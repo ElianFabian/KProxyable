@@ -5,6 +5,13 @@ plugins {
 	alias(libs.plugins.maven.publish) apply false
 }
 
+// Load metadata properties into project extensions for the publish plugin
+val metadataProps = java.util.Properties()
+file("gradle.metadata.properties").inputStream().use { metadataProps.load(it) }
+metadataProps.forEach { key, value ->
+	extra[key.toString()] = value.toString()
+}
+
 rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
 	rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().apply {
 		yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.NONE
