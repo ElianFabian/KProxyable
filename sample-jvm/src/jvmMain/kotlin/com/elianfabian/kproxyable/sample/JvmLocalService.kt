@@ -5,4 +5,5 @@ import com.elianfabian.kproxyable.KProxyable
 @KProxyable
 interface JvmLocalService {
 	fun jvmSpecificAction(input: Int): Int
+	fun jvmSpecificAction(input: String): String
 }

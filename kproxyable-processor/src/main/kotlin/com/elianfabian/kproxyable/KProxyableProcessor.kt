@@ -40,7 +40,7 @@ import kotlin.reflect.KClass
 
 /**
  * Truly Unified KMP Symbol Processor for KProxyable.
- * Version 1.1.4: Robust discovery using classpathFile strategy.
+ * Version 1.1.5: Support for overloaded methods via unique descriptor names.
  */
 public class KProxyableProcessor(
 	private val environment: SymbolProcessorEnvironment,
@@ -217,7 +217,15 @@ public class KProxyableProcessor(
 		val proxyClassName = "_${interfaceName}Proxy"
 
 		val companionBuilder = TypeSpec.companionObjectBuilder()
-		classDeclaration.getDeclaredFunctions().forEach { companionBuilder.addProperty(PropertySpec.builder("_${it.simpleName.asString()}Descriptor", FunctionDescriptor::class.asTypeName().copy(nullable = true)).mutable(true).initializer("null").addModifiers(KModifier.PRIVATE).build()) }
+        val allFunctions = classDeclaration.getDeclaredFunctions().toList()
+		allFunctions.forEachIndexed { i, func -> 
+            val descriptorName = if (allFunctions.count { it.simpleName.asString() == func.simpleName.asString() } > 1) {
+                "_${func.simpleName.asString()}Descriptor_$i"
+            } else {
+                "_${func.simpleName.asString()}Descriptor"
+            }
+            companionBuilder.addProperty(PropertySpec.builder(descriptorName, FunctionDescriptor::class.asTypeName().copy(nullable = true)).mutable(true).initializer("null").addModifiers(KModifier.PRIVATE).build()) 
+        }
 		classDeclaration.getDeclaredProperties().forEach { companionBuilder.addProperty(PropertySpec.builder("_${it.simpleName.asString()}Descriptor", PropertyDescriptor::class.asTypeName().copy(nullable = true)).mutable(true).initializer("null").addModifiers(KModifier.PRIVATE).build()) }
 
 		val proxyClassSpec = TypeSpec.classBuilder(proxyClassName).addSuperinterface(classDeclaration.toClassName())
@@ -228,30 +236,41 @@ public class KProxyableProcessor(
 				classDeclaration.getDeclaredProperties().forEach { property ->
 					val name = property.simpleName.asString()
 					val type = property.type.toTypeName()
-					val descriptorCode = CodeBlock.of("val descriptor = _${name}Descriptor ?: %L.also { _${name}Descriptor = it }", generatePropertyDescriptorInitializer(property))
-
-					val getterBuilder = FunSpec.getterBuilder().addCode(descriptorCode).addCode("\n")
-					getterBuilder.addStatement("return handler.onGetProperty(descriptor) as %T", type)
+					val descriptorName = "_${name}Descriptor"
+					val initializer = generatePropertyDescriptorInitializer(property)
+					
+					val getterBuilder = FunSpec.getterBuilder()
+						.addCode("val descriptor = $descriptorName ?: %L.also {\n    $descriptorName = it\n}\n", initializer)
+						.addStatement("return handler.onGetProperty(descriptor) as %T", type)
 
 					val propBuilder = PropertySpec.builder(name, type).addModifiers(KModifier.OVERRIDE).getter(getterBuilder.build())
 
 					if (property.isMutable) {
 						propBuilder.mutable(true)
-						propBuilder.setter(FunSpec.setterBuilder().addParameter("v", type).addCode(descriptorCode).addCode("\n").addStatement("handler.onSetProperty(descriptor, v)").build())
+						propBuilder.setter(FunSpec.setterBuilder().addParameter("v", type)
+							.addCode("val descriptor = $descriptorName ?: %L.also {\n    $descriptorName = it\n}\n", initializer)
+							.addStatement("handler.onSetProperty(descriptor, v)").build())
 					}
 					addProperty(propBuilder.build())
 				}
-				classDeclaration.getDeclaredFunctions().forEach { function ->
+				allFunctions.forEachIndexed { i, function ->
 					val name = function.simpleName.asString()
+                    val descriptorName = if (allFunctions.count { it.simpleName.asString() == name } > 1) {
+                        "_${name}Descriptor_$i"
+                    } else {
+                        "_${name}Descriptor"
+                    }
 					val returnType = function.returnType?.toTypeName() ?: UNIT
 					val parameters = function.parameters.map { ParameterSpec.builder(it.name!!.asString(), it.type.toTypeName()).build() }
 					val argsCall = function.parameters.joinToString(", ") { it.name!!.asString() }
 					val isSuspend = Modifier.SUSPEND in function.modifiers
-					val descriptorCode = CodeBlock.of("val descriptor = _${name}Descriptor ?: %L.also { _${name}Descriptor = it }", generateFunctionDescriptorInitializer(function))
+					val initializer = generateFunctionDescriptorInitializer(function)
 
-					val funBuilder = FunSpec.builder(name).addModifiers(if (isSuspend) listOf(KModifier.OVERRIDE, KModifier.SUSPEND) else listOf(KModifier.OVERRIDE)).returns(returnType).addParameters(parameters)
-						.addCode(descriptorCode)
-						.addCode("\n")
+					val funBuilder = FunSpec.builder(name)
+						.addModifiers(if (isSuspend) listOf(KModifier.OVERRIDE, KModifier.SUSPEND) else listOf(KModifier.OVERRIDE))
+						.returns(returnType)
+						.addParameters(parameters)
+						.addCode("val descriptor = $descriptorName ?: (%L).also {\n    $descriptorName = it\n}\n", initializer)
 					
 					val callMethod = if (isSuspend) "onSuspendCall" else "onCall"
 					funBuilder.addStatement("return handler.%L(descriptor, listOf(%L)) as %T", callMethod, argsCall, returnType)

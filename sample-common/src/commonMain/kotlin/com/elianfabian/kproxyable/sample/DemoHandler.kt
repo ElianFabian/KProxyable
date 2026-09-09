@@ -16,7 +16,10 @@ class DemoHandler : ProxyHandler {
 				val id = args[0] as Int
 				id > 0
 			}
-			"jvmSpecificAction" -> (args[0] as Int) * 2
+			"jvmSpecificAction" -> {
+                val input = args[0]
+                if (input is Int) input * 2 else "Processed: $input"
+            }
 			"kmpSpecificAction" -> "Processed: ${args[0]}"
 			"greet" -> "Hello from DemoHandler, ${args[0]}"
 			"jsOnly" -> "JS-Interceptors-Enabled: ${args[0]}"

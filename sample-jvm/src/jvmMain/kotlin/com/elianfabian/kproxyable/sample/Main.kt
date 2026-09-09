@@ -8,5 +8,7 @@ suspend fun main() {
 	println("\n--- Testing Local Service (Current Module) ---")
 	val localService = KProxy.create<JvmLocalService>(DemoHandler())
 	val localResult = localService.jvmSpecificAction(100)
+	val localResultStr = localService.jvmSpecificAction("101")
 	println("Local Result: $localResult")
+	println("Local Result Str: $localResultStr")
 }
