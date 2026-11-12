@@ -13,6 +13,8 @@ public interface ProxyHandler {
 	 *
 	 * @param function The metadata descriptor of the function being invoked.
 	 * @param args The positional arguments passed to the function call.
+	 * Function-valued arguments retain their original objects. Their descriptors expose a logical
+	 * signature: cast a suspend callback to its declared suspend type before invoking it.
 	 * @return The result value to be returned by the invoked function.
 	 */
 	public fun onCall(function: FunctionDescriptor, args: List<Any?>): Any?

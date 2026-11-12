@@ -6,8 +6,78 @@ on:
       - '*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tasks: jvmTest jsNodeTest wasmJsNodeTest jsBrowserTest wasmJsBrowserTest linuxX64Test test :kproxyable-gradle-plugin:test
+          - os: windows-latest
+            tasks: jvmTest mingwX64Test test :kproxyable-gradle-plugin:test
+          - os: macos-latest
+            tasks: macosArm64Test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x gradlew
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            export CHROME_BIN="$(command -v google-chrome)"
+          fi
+          ./gradlew ${{ matrix.tasks }} --continue --no-configuration-cache \
+            -Pkproxyable.matrix=true -Pkotlin.native.disableCompilerDaemon=true
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat ${{ matrix.tasks }} --continue --no-configuration-cache '-Pkproxyable.matrix=true'
+
+      - name: Verify extension property diagnostic
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scratch/test_extension_property_diagnostic.ps1
+
+      - name: Verify external consumer dependency versions
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseVersion = (Get-Content gradle.metadata.properties | Where-Object { $_ -match '^version=' }) -replace '^version=', ''
+          .\gradlew.bat -p kproxyable-gradle-plugin/src/testFixtures/version-consumer verifyKProxyableVersions "-PexpectedVersion=$releaseVersion" --no-configuration-cache
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            **/build/test-results/**/TEST-*.xml
+            **/build/reports/tests/**
+            build/extension-property-negative.log
+          if-no-files-found: warn
+          retention-days: 7
+
   publish:
+    needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +92,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Publish to Maven Central and Gradle Portal
-        # macOS can build all targets (iOS, macOS, Linux, Windows, JVM, JS, Wasm)
-        # This performs a single atomic upload of the entire multi-platform bundle.
+        # Publish only after every test job succeeds; publication credentials stay in this job.
         run: ./gradlew publishAllPublicationsToMavenCentralRepository :kproxyable-gradle-plugin:publishPlugins --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}

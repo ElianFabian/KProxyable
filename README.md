@@ -35,7 +35,7 @@ plugins {
     id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
 
     // 2. Apply KProxyable
-    id("io.github.elianfabian.kproxyable") version "$version" apply false
+    id("io.github.elianfabian.kproxyable") version "2.0.0" apply false
 }
 ```
 
@@ -172,6 +172,20 @@ val service = KProxy.create<MyService>(MyHandler())
 ---
 
 ## Developer Matrix Testing
+
+The type metadata model, migration notes, implementation details, and test commands are documented in
+[Type descriptors](docs/TYPE_DESCRIPTORS.md).
+
+The agreed implementation steps and acceptance tests are in the
+[implementation plan](docs/IMPLEMENTATION_PLAN.md).
+
+The publication workflow runs tests on Linux, Windows, and macOS before publishing. It covers JVM,
+JS/Wasm on Node and headless Chrome, and Native Linux x64, Windows x64, and macOS ARM64. Test reports
+are retained as workflow artifacts for seven days, including on failure. Publication requires every
+test job to succeed. Apple simulator tests and the Kotlin/KSP version matrix are separate checks.
+
+The Windows job also checks an independent consumer fixture to ensure the plugin selects matching
+runtime and processor versions. This checks dependency declarations without downloading unreleased artifacts.
 
 To ensure the library remains stable across the rapidly evolving Kotlin 2.x ecosystem, we've included 
 automation scripts in the `scratch/` folder.

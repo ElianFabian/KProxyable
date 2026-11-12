@@ -17,7 +17,7 @@ if (propsFile.exists()) {
 }
 
 group = metadataProps.getProperty("group") ?: "io.github.elianfabian"
-version = metadataProps.getProperty("version") ?: "1.1.1"
+version = requireNotNull(metadataProps.getProperty("version")) { "Missing version in gradle.metadata.properties" }
 
 // We compile the plugin against a stable BASELINE version.
 // This allows the plugin to be built in older Gradle environments,

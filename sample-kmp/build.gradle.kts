@@ -4,6 +4,13 @@ plugins {
 	id("io.github.elianfabian.kproxyable")
 }
 
+// Observe raw symbols separately from the normalized public descriptors on every test target.
+kotlin.targets.matching { it.name != "metadata" }.configureEach {
+	dependencies.add("ksp${name.replaceFirstChar { it.uppercase() }}Test", dependencies.project(
+		mapOf("path" to ":kproxyable-processor", "configuration" to "kspProbeElements"),
+	))
+}
+
 kotlin {
 	compilerOptions {
 		freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -47,6 +54,7 @@ kotlin {
 		}
 		commonTest.dependencies {
 			implementation(kotlin("test"))
+			implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
 		}
 	}
 }

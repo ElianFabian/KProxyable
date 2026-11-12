@@ -12,7 +12,7 @@ import java.io.File
 
 /**
  * Gradle plugin for KProxyable.
- * Version 1.1.4: Smart Lazy discovery compatible with the entire Kotlin 2.x lineage.
+ * Discovers proxies and aligns external dependencies with the published plugin version.
  */
 class KProxyablePlugin : Plugin<Project> {
 	override fun apply(project: Project) {
@@ -130,7 +130,7 @@ class KProxyablePlugin : Plugin<Project> {
 			project.rootProject.project(":kproxyable-$module")
 		}
 		catch (_: Exception) {
-			"io.github.elianfabian:kproxyable-$module:1.1.4"
+			"${BuildConstants.GROUP}:kproxyable-$module:${BuildConstants.VERSION}"
 		}
 	}
 }
