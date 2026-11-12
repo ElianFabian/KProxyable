@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+# This test deliberately invokes a failing native command and validates its output below.
+$PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $fixturePath = Join-Path $repoRoot 'kproxyable-processor/src/testFixtures/ExtensionProperty.kt.txt'
 $targetPath = Join-Path $repoRoot 'sample-kmp/src/commonTest/kotlin/ExtensionPropertyNegativeFixture.kt'
@@ -18,3 +20,7 @@ finally {
     Remove-Item -LiteralPath $targetPath
     Pop-Location
 }
+
+# GitHub Actions' pwsh wrapper propagates LASTEXITCODE even when the script succeeds.
+# Clear the expected Gradle failure only after validation and cleanup have succeeded.
+$global:LASTEXITCODE = 0
